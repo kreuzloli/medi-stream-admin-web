@@ -119,11 +119,6 @@ Authorization: Bearer <token>
 
 项目部署在 `/admin/` 子路径，并使用 Hash Router：
 
-```text
-https://genwhole.com/admin/#/login
-https://genwhole.com/admin/#/
-https://genwhole.com/admin/#/live/rooms
-```
 
 Hash 后面的页面路径不会发送给服务器，因此刷新业务页面不需要为每条前端路由配置 Nginx fallback。
 
