@@ -5,6 +5,7 @@ import type { AdminSession } from '../types';
 
 const TOKEN_KEY = 'medi-stream-admin-token';
 
+/** 安全访问浏览器存储；隐私模式或测试环境禁用存储时返回空。 */
 function browserStorage(): Storage | null {
     try {
         return typeof window === 'undefined' ? null : window.localStorage ?? null;
@@ -17,10 +18,12 @@ export class SessionStore extends EventTarget {
     private token: string | null = null;
     private admin: AdminSession | null = null;
 
+    /** 返回当前已加载的管理员信息；会话未恢复时为空。 */
     get currentAdmin(): AdminSession | null {
         return this.admin;
     }
 
+    /** 只有 Token 和管理员信息同时存在时才视为完整登录。 */
     get authenticated(): boolean {
         return Boolean(this.token && this.admin);
     }
@@ -48,7 +51,6 @@ export class SessionStore extends EventTarget {
             result = await login(username, password);
         } catch (error) {
             logger.warn('administrator login failed', {
-                username,
                 status: error instanceof ApiError ? error.status : undefined,
             });
             throw error;
@@ -64,7 +66,6 @@ export class SessionStore extends EventTarget {
         }
         logger.info('administrator login succeeded', {
             adminId: this.admin.adminId,
-            username: this.admin.username,
         });
         this.notify();
     }
@@ -79,7 +80,6 @@ export class SessionStore extends EventTarget {
             this.admin = await loadCurrentAdmin(this.token);
             logger.info('administrator session restored', {
                 adminId: this.admin.adminId,
-                username: this.admin.username,
             });
             this.notify();
             return true;

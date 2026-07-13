@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { sessionStore } from '../auth/session';
+import { logger } from '../common/logger';
 import { managementApi } from './management';
 
 describe('managementApi', () => {
@@ -57,5 +58,30 @@ describe('managementApi', () => {
 
         expect(clearSession).toHaveBeenCalledOnce();
         expect(window.location.hash).toBe('#/login');
+    });
+
+    it('logs failed requests without including the token or request body', async () => {
+        vi.spyOn(sessionStore, 'accessToken', 'get').mockReturnValue('sensitive-token');
+        const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+            message: '服务异常',
+        }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+        })));
+
+        await expect(managementApi.createRole({
+            roleCode: 'OPERATOR',
+            roleName: '运营角色',
+            status: 1,
+        })).rejects.toMatchObject({ status: 500 });
+
+        expect(warn).toHaveBeenCalledWith('management api request failed', {
+            method: 'POST',
+            path: '/roles',
+            status: 500,
+        });
+        expect(JSON.stringify(warn.mock.calls)).not.toContain('sensitive-token');
+        expect(JSON.stringify(warn.mock.calls)).not.toContain('OPERATOR');
     });
 });

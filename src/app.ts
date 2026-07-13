@@ -51,7 +51,7 @@ export class AdminApp extends HTMLElement {
         } catch (error) {
             logger.error('session restore blocked application startup', {
                 status: error instanceof ApiError ? error.status : undefined,
-                message: error instanceof Error ? error.message : 'unknown error',
+                errorType: error instanceof Error ? error.name : 'unknown',
             });
             this.showFatalError(error instanceof ApiError ? error.message : '暂时无法连接管理服务');
             return;
@@ -116,6 +116,7 @@ export class AdminApp extends HTMLElement {
         this.render();
     };
 
+    /** 页面导航完成后关闭移动端抽屉，桌面端状态保持不变。 */
     private readonly closeMobileSidebar = (): void => {
         if (this.mobileSidebarOpen) {
             this.mobileSidebarOpen = false;

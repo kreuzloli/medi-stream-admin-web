@@ -22,10 +22,12 @@ export class UserManagementPage extends HTMLElement {
     private notice = '';
     private filters = { userCode: '', realName: '', identityType: '', status: '' };
 
+    /** 组件挂载后加载首屏用户数据。 */
     connectedCallback(): void {
         void this.load();
     }
 
+    /** 使用当前筛选和页码加载用户分页，并统一维护加载与错误状态。 */
     private async load(): Promise<void> {
         this.loading = true;
         this.error = '';
@@ -42,6 +44,7 @@ export class UserManagementPage extends HTMLElement {
         }
     }
 
+    /** 渲染用户筛选、分页和权限受控的账号状态操作。 */
     private render(): void {
         const canManage = sessionStore.can('USER_MANAGE');
         const rows = this.loading ? loadingRows(7) : this.records.length === 0 ? emptyRows(7) : this.records.map((user) => `
@@ -73,6 +76,7 @@ export class UserManagementPage extends HTMLElement {
         this.bindEvents(canManage);
     }
 
+    /** 绑定筛选、分页和详情事件；封禁操作只对有管理权限的用户开放。 */
     private bindEvents(canManage: boolean): void {
         this.querySelector('[data-retry]')?.addEventListener('click', () => void this.load());
         this.querySelector<HTMLFormElement>('[data-filter]')?.addEventListener('submit', (event) => {
@@ -100,6 +104,7 @@ export class UserManagementPage extends HTMLElement {
         if (canManage) this.querySelectorAll<HTMLButtonElement>('[data-status]').forEach((button) => button.addEventListener('click', () => void this.changeStatus(Number(button.dataset.status))));
     }
 
+    /** 加载用户详情并以医院、科室名称展示关联信息，不向页面暴露关联 ID。 */
     private async openDetail(id: number): Promise<void> {
         try {
             const user = await managementApi.user(id);
@@ -115,6 +120,7 @@ export class UserManagementPage extends HTMLElement {
         }
     }
 
+    /** 二次确认后封禁或解封用户，并刷新当前分页。 */
     private async changeStatus(id: number): Promise<void> {
         const user = this.records.find((item) => item.id === id);
         if (!user) return;

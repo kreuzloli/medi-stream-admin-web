@@ -33,12 +33,14 @@ export class AccessManagementPage extends HTMLElement {
     private adminPage = 1;
     private adminTotal = 0;
 
+    /** 切换 RBAC 子页面并重新加载对应数据，避免复用上一页成功提示。 */
     async update(kind: AccessPageKind): Promise<void> {
         this.kind = kind;
         this.notice = '';
         await this.load();
     }
 
+    /** 按当前页面类型加载管理员分页、角色或权限数据，并统一维护加载态。 */
     private async load(): Promise<void> {
         this.loading = true;
         this.error = '';
@@ -66,9 +68,11 @@ export class AccessManagementPage extends HTMLElement {
         }
     }
 
+    /** 根据数据状态和当前管理员权限组合页面，写操作入口默认最小授权。 */
     private render(): void {
         const meta = pageMeta[this.kind];
         const canManage = sessionStore.can(meta.permission);
+        // 分配关系需要额外读取候选项；缺少查看权限时隐藏入口，避免必然失败的请求。
         const canAssignRoles = canManage && sessionStore.can('ROLE_VIEW');
         const canAssignPermissions = canManage && sessionStore.can('PERMISSION_VIEW');
         this.innerHTML = `
@@ -88,6 +92,7 @@ export class AccessManagementPage extends HTMLElement {
         this.bindEvents(canManage);
     }
 
+    /** 输出管理员专用筛选区，并保留当前查询条件。 */
     private renderAdminFilters(): string {
         return `
             <form class="filter-bar" data-filter>
@@ -98,6 +103,7 @@ export class AccessManagementPage extends HTMLElement {
             </form>`;
     }
 
+    /** 输出管理员表格，并按管理和角色查看权限拆分操作入口。 */
     private renderAdmins(canManage: boolean, canAssignRoles: boolean): string {
         const rows = this.loading ? loadingRows(6) : this.admins.length === 0 ? emptyRows(6) : this.admins.map((admin) => `
             <tr>
@@ -116,6 +122,7 @@ export class AccessManagementPage extends HTMLElement {
         return `<div class="table-scroll"><table><thead><tr><th>账号</th><th>姓名</th><th>状态</th><th>最后登录</th><th>创建时间</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     }
 
+    /** 输出角色表格；配置权限入口还需要权限定义查看能力。 */
     private renderRoles(canManage: boolean, canAssignPermissions: boolean): string {
         const rows = this.loading ? loadingRows(5) : this.roles.length === 0 ? emptyRows(5) : this.roles.map((role) => `
             <tr><td><div class="primary-cell"><strong>${escapeHtml(role.roleName)}</strong><small>${escapeHtml(role.roleCode)}</small></div></td><td>${escapeHtml(role.description || '—')}</td><td>${statusBadge(role.status)}</td><td>${role.id}</td><td class="row-actions">${canManage ? `
@@ -126,6 +133,7 @@ export class AccessManagementPage extends HTMLElement {
         return `<div class="table-scroll"><table><thead><tr><th>角色</th><th>说明</th><th>状态</th><th>ID</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     }
 
+    /** 输出权限定义表格，未获管理权限时仅允许查看。 */
     private renderPermissions(canManage: boolean): string {
         const rows = this.loading ? loadingRows(6) : this.permissions.length === 0 ? emptyRows(6) : this.permissions.map((permission) => `
             <tr><td><code>${escapeHtml(permission.permissionCode)}</code></td><td>${escapeHtml(permission.permissionName)}</td><td>${escapeHtml(permission.resourceType || '—')}</td><td>${escapeHtml(permission.description || '—')}</td><td>${statusBadge(permission.status)}</td><td class="row-actions">${canManage ? `
@@ -135,11 +143,13 @@ export class AccessManagementPage extends HTMLElement {
         return `<div class="table-scroll"><table><thead><tr><th>权限代码</th><th>名称</th><th>资源类型</th><th>说明</th><th>状态</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     }
 
+    /** 根据后端总数生成管理员分页控制，并限制翻页边界。 */
     private renderPagination(): string {
         const pages = Math.max(1, Math.ceil(this.adminTotal / 20));
         return `<div class="pagination"><span>共 ${this.adminTotal} 条</span><button type="button" data-page="prev" ${this.adminPage <= 1 ? 'disabled' : ''}>上一页</button><b>${this.adminPage} / ${pages}</b><button type="button" data-page="next" ${this.adminPage >= pages ? 'disabled' : ''}>下一页</button></div>`;
     }
 
+    /** 绑定查询、分页和行操作；写事件只为有管理权限的用户注册。 */
     private bindEvents(canManage: boolean): void {
         this.querySelector('[data-retry]')?.addEventListener('click', () => void this.load());
         this.querySelector<HTMLFormElement>('[data-filter]')?.addEventListener('submit', (event) => {
@@ -165,6 +175,7 @@ export class AccessManagementPage extends HTMLElement {
         });
     }
 
+    /** 将统一的行操作分派到当前资源类型，并对危险操作要求二次确认。 */
     private async handleAction(action: string, id: number): Promise<void> {
         if (action === 'edit') return this.openEditor(id);
         if (action === 'roles') return this.openAdminRoles(id);
@@ -193,6 +204,7 @@ export class AccessManagementPage extends HTMLElement {
         }
     }
 
+    /** 根据当前资源类型打开新增或编辑表单，并映射到对应管理 API。 */
     private openEditor(id?: number): void {
         if (this.kind === 'admins') {
             const value = this.admins.find((item) => item.id === id);
@@ -235,6 +247,7 @@ export class AccessManagementPage extends HTMLElement {
         });
     }
 
+    /** 加载管理员已选角色和候选角色，再打开全量替换弹窗。 */
     private async openAdminRoles(id: number): Promise<void> {
         try {
             await this.openIdsDialog('分配管理员角色', await managementApi.roles(), (item) => item.roleName, (item) => item.roleCode, await managementApi.adminRoleIds(id), (ids) => managementApi.replaceAdminRoles(id, ids));
@@ -244,6 +257,7 @@ export class AccessManagementPage extends HTMLElement {
         }
     }
 
+    /** 加载角色已选权限和候选权限，再打开全量替换弹窗。 */
     private async openRolePermissions(id: number): Promise<void> {
         try {
             await this.openIdsDialog('配置角色权限', await managementApi.permissions(), (item) => item.permissionName, (item) => item.permissionCode, await managementApi.rolePermissionIds(id), (ids) => managementApi.replaceRolePermissions(id, ids));
@@ -253,24 +267,29 @@ export class AccessManagementPage extends HTMLElement {
         }
     }
 
+    /** 复用关系配置弹窗，把选中的复选框转换为后端全量替换所需的 ID 数组。 */
     private async openIdsDialog<T extends { id: number }>(title: string, options: T[], label: (item: T) => string, code: (item: T) => string, selected: { ids: number[] }, save: (ids: number[]) => Promise<unknown>): Promise<void> {
         const dialog = openDialog(this, this.dialogShell(title, `<div class="choice-list span-2">${options.map((item) => `<label><input type="checkbox" name="ids" value="${item.id}" ${selected.ids.includes(item.id) ? 'checked' : ''}/><span><strong>${escapeHtml(label(item))}</strong><small>${escapeHtml(code(item))}</small></span></label>`).join('') || '<p>暂无可选项</p>'}</div>`));
         this.bindDialogSubmit(dialog, async (data) => save(data.getAll('ids').map(Number)));
     }
 
+    /** 打开密码重置表单；密码只提交给 API，不写入页面日志或提示。 */
     private openPassword(id: number): void {
         const dialog = openDialog(this, this.dialogShell('重置管理员密码', '<label class="span-2">新密码<input name="password" type="password" required minlength="8" autocomplete="new-password" /></label>'));
         this.bindDialogSubmit(dialog, async (data) => managementApi.resetAdminPassword(id, formValue(data, 'password')));
     }
 
+    /** 生成统一编辑弹窗骨架，字段由各资源编辑器提供。 */
     private dialogShell(title: string, fields: string): string {
         return `<form class="dialog-card"><header><div><h3>${title}</h3><p>提交后立即同步到管理服务</p></div><button type="button" class="dialog-close" data-close aria-label="关闭">×</button></header><div class="dialog-fields">${fields}</div><p class="dialog-error" data-dialog-error></p><footer><button type="button" class="secondary-button" data-close>取消</button><button type="submit" class="primary-button">保存</button></footer></form>`;
     }
 
+    /** 生成启停状态选择器并回显当前值。 */
     private statusSelect(status: number): string {
         return `<label>状态<select name="status"><option value="1" ${status === 1 ? 'selected' : ''}>启用</option><option value="0" ${status === 0 ? 'selected' : ''}>停用</option></select></label>`;
     }
 
+    /** 统一处理弹窗提交、防重复点击、错误回显和成功后的列表刷新。 */
     private bindDialogSubmit(dialog: HTMLDialogElement, submit: (data: FormData) => Promise<unknown>): void {
         dialog.querySelector<HTMLFormElement>('form')?.addEventListener('submit', (event) => {
             event.preventDefault();
@@ -289,6 +308,7 @@ export class AccessManagementPage extends HTMLElement {
         });
     }
 
+    /** 执行无需表单的写操作，并统一刷新成功提示或错误状态。 */
     private async run(action: () => Promise<void>, message: string): Promise<void> {
         try {
             await action();
