@@ -5,8 +5,16 @@ import type { AdminSession } from '../types';
 
 const TOKEN_KEY = 'medi-stream-admin-token';
 
+function browserStorage(): Storage | null {
+    try {
+        return typeof window === 'undefined' ? null : window.localStorage ?? null;
+    } catch {
+        return null;
+    }
+}
+
 export class SessionStore extends EventTarget {
-    private token: string | null = localStorage.getItem(TOKEN_KEY);
+    private token: string | null = null;
     private admin: AdminSession | null = null;
 
     get currentAdmin(): AdminSession | null {
@@ -15,6 +23,22 @@ export class SessionStore extends EventTarget {
 
     get authenticated(): boolean {
         return Boolean(this.token && this.admin);
+    }
+
+    /** 返回业务 API 使用的当前 Token；未登录时拒绝发出受保护请求。 */
+    get accessToken(): string {
+        if (!this.token) {
+            throw new ApiError(401, '登录状态已失效');
+        }
+        return this.token;
+    }
+
+    /** 判断当前管理员是否拥有指定权限；超级管理员不受权限代码限制。 */
+    can(permission: string): boolean {
+        return Boolean(
+            this.admin
+            && (this.admin.roles.includes('SUPER_ADMIN') || this.admin.permissions.includes(permission)),
+        );
     }
 
     /** 使用账号密码建立完整会话，只有 `/auth/me` 成功后才通知页面登录完成。 */
@@ -29,7 +53,7 @@ export class SessionStore extends EventTarget {
             });
             throw error;
         }
-        localStorage.setItem(TOKEN_KEY, result.token);
+        browserStorage()?.setItem(TOKEN_KEY, result.token);
         this.token = result.token;
         try {
             this.admin = await loadCurrentAdmin(result.token);
@@ -47,6 +71,7 @@ export class SessionStore extends EventTarget {
 
     /** 页面刷新时使用本地 Token 恢复会话；401 表示 Token 已失效。 */
     async restore(): Promise<boolean> {
+        this.token ??= browserStorage()?.getItem(TOKEN_KEY) ?? null;
         if (!this.token) {
             return false;
         }
@@ -91,7 +116,7 @@ export class SessionStore extends EventTarget {
 
     /** 清除所有会话信息；此方法不会打印 Token。 */
     clear(): void {
-        localStorage.removeItem(TOKEN_KEY);
+        browserStorage()?.removeItem(TOKEN_KEY);
         this.token = null;
         this.admin = null;
         this.notify();

@@ -2,7 +2,7 @@
 
 Medi Stream 管理后台前端，使用 Vite、TypeScript 和原生 Web Components 构建。
 
-项目面向医疗直播平台的后台管理场景。目前已实现管理员登录、登录态恢复、欢迎工作台、权限菜单、退出登录和响应式后台框架；用户、医院、内容、直播及 RBAC 业务页面将在后续迭代中接入。
+项目面向医疗直播平台的后台管理场景。目前已实现管理员登录、登录态恢复、欢迎工作台、权限菜单、退出登录、响应式后台框架，以及用户账号和 RBAC 管理页面。
 
 ## 技术栈
 
@@ -24,6 +24,10 @@ Medi Stream 管理后台前端，使用 Vite、TypeScript 和原生 Web Componen
 - 基于角色和权限代码的侧边栏菜单过滤
 - 可折叠桌面侧边栏和移动端抽屉导航
 - 工作台欢迎页和模块快捷入口
+- 普通用户查询、详情及封禁/解封
+- 管理员增删改查、状态、密码重置和角色分配
+- 角色增删改查、状态和权限分配
+- 权限定义增删改查和状态管理
 - 未开发模块的统一占位页
 - 统一 API 错误处理和关键状态日志
 - `/admin/` 子路径构建与部署
@@ -106,6 +110,10 @@ http://127.0.0.1:8081/auth/login
 | 管理员登录 | `POST /admin/api/auth/login` |
 | 当前管理员 | `GET /admin/api/auth/me` |
 | 退出登录 | `POST /admin/api/auth/logout` |
+| 普通用户查询与状态 | `GET /admin/api/users`、`PUT /admin/api/users/:id/status` |
+| 管理员账号管理 | `/admin/api/admins`、`/admin/api/admins/:id/*` |
+| 角色与角色权限 | `/admin/api/roles`、`/admin/api/roles/:id/permissions` |
+| 权限定义管理 | `/admin/api/permissions`、`/admin/api/permissions/:id/status` |
 
 登录成功后，后续请求使用：
 
@@ -159,12 +167,12 @@ location /admin/ {
 
 ```text
 src/
-├── api/          # HTTP 客户端和管理员认证接口
+├── api/          # HTTP 客户端、认证和管理接口
 ├── auth/         # Token 与当前管理员会话
 ├── common/       # 通用日志等基础能力
 ├── components/   # 侧边栏和顶栏 Web Components
 ├── navigation/   # 菜单定义与权限过滤
-├── pages/        # 登录、欢迎和占位页面
+├── pages/        # 登录、欢迎、用户、RBAC 和占位页面
 ├── router/       # Hash 路由与页面匹配
 ├── styles/       # 全局设计令牌和响应式样式
 ├── ui/           # SVG 图标和品牌标记
@@ -195,13 +203,9 @@ GET /admin/api/auth/me
 
 以下模块目前已有导航入口，但业务页面仍为占位状态：
 
-- 用户管理
 - 医院管理
 - 内容目录
 - 直播间管理
 - 腾讯云直播
-- 管理员管理
-- 角色管理
-- 权限管理
 
 后续接入这些模块时，应继续复用现有 API、会话、路由和页面框架，不在页面组件内重复实现鉴权逻辑。

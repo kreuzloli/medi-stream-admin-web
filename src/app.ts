@@ -4,13 +4,16 @@ import { logger } from './common/logger';
 import './components/admin-header';
 import './components/admin-sidebar';
 import './pages/login-page';
+import './pages/access-management-page';
 import './pages/placeholder-page';
+import './pages/user-management-page';
 import './pages/welcome-page';
 import { matchRoute, navigate, routePathFromHash } from './router/routes';
 import type { AdminHeader } from './components/admin-header';
 import type { AdminSidebar } from './components/admin-sidebar';
 import type { PlaceholderPage } from './pages/placeholder-page';
 import type { WelcomePage } from './pages/welcome-page';
+import type { AccessManagementPage, AccessPageKind } from './pages/access-management-page';
 
 /**
  * 管理端根组件，负责会话恢复、访问保护、应用框架和页面切换。
@@ -80,7 +83,11 @@ export class AdminApp extends HTMLElement {
         const route = matchRoute(currentPath === '/login' ? '/' : currentPath);
         const content = route.kind === 'welcome'
             ? '<welcome-page></welcome-page>'
-            : '<placeholder-page></placeholder-page>';
+            : route.kind === 'users'
+                ? '<user-management-page></user-management-page>'
+                : ['admins', 'roles', 'permissions'].includes(route.kind)
+                    ? '<access-management-page></access-management-page>'
+                    : '<placeholder-page></placeholder-page>';
         this.innerHTML = `
             <div class="admin-layout ${this.sidebarCollapsed ? 'is-collapsed' : ''} ${this.mobileSidebarOpen ? 'mobile-open' : ''}">
                 <admin-sidebar></admin-sidebar>
@@ -94,6 +101,8 @@ export class AdminApp extends HTMLElement {
         this.querySelector<AdminHeader>('admin-header')?.update(admin, route.title);
         this.querySelector<WelcomePage>('welcome-page')?.update(admin);
         this.querySelector<PlaceholderPage>('placeholder-page')?.update(route);
+        const accessPage = this.querySelector<AccessManagementPage>('access-management-page');
+        if (accessPage) void accessPage.update(route.kind as AccessPageKind);
         this.querySelector('.sidebar-backdrop')?.addEventListener('click', this.closeMobileSidebar);
     };
 

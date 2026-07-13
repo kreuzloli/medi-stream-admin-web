@@ -11,6 +11,15 @@ describe('matchRoute', () => {
         expect(matchRoute('/live/rooms')).toMatchObject({ title: '直播间管理', kind: 'placeholder' });
     });
 
+    it.each([
+        ['/users', 'users'],
+        ['/access/admins', 'admins'],
+        ['/access/roles', 'roles'],
+        ['/access/permissions', 'permissions'],
+    ])('maps %s to its management page', (path, kind) => {
+        expect(matchRoute(path)).toMatchObject({ kind });
+    });
+
     it('falls back to the welcome route for an unknown path', () => {
         expect(matchRoute('/not-found')).toMatchObject({ title: '工作台', kind: 'welcome' });
     });
