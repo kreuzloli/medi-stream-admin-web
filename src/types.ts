@@ -75,6 +75,24 @@ export interface FileObject {
     createdAt?: string | null;
 }
 
+export interface Department {
+    id: number;
+    deptName: string;
+    deptCode?: string | null;
+    sortNo: number;
+    status: number;
+}
+
+export interface Disease {
+    id: number;
+    deptId: number;
+    diseaseName: string;
+    diseaseCode?: string | null;
+    keywords?: string | null;
+    sortNo: number;
+    status: number;
+}
+
 export interface LiveRoom {
     id: number;
     ownerUserId?: number | null;

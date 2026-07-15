@@ -1,6 +1,6 @@
 import { liveApi, type LiveRoomInput, type LiveRoomStreamInput } from '../api/live';
 import { sessionStore } from '../auth/session';
-import type { FileObject, LiveRoom, LiveRoomDetail } from '../types';
+import type { Department, Disease, FileObject, LiveRoom, LiveRoomDetail } from '../types';
 import {
     emptyRows,
     errorMessage,
@@ -16,14 +16,25 @@ function optionalNumber(value: string): number | undefined {
     return value === '' ? undefined : Number(value);
 }
 
-/** datetime-local 省略秒时补齐秒，匹配 Rust NaiveDateTime 的输入格式。 */
-function apiDateTime(value: string): string | undefined {
-    if (!value) return undefined;
-    return value.length === 16 ? `${value}:00` : value;
+/** 把后端时间拆成日期、小时和分钟，供三个可选择控件分别回显。 */
+function startTimeParts(value?: string | null): { date: string; hour: string; minute: string } {
+    const normalized = value?.replace(' ', 'T') ?? '';
+    return {
+        date: normalized.slice(0, 10),
+        hour: normalized.slice(11, 13) || '00',
+        minute: normalized.slice(14, 16) || '00',
+    };
 }
 
-function inputDateTime(value?: string | null): string {
-    return value ? value.replace(' ', 'T').slice(0, 16) : '';
+/** 把日期、小时和分钟重新组合成 Rust NaiveDateTime 接收的完整值。 */
+function composeStartTime(date: string, hour: string, minute: string): string | undefined {
+    return date ? `${date}T${hour}:${minute}:00` : undefined;
+}
+
+function timeOptions(count: number, selected: string): string {
+    return Array.from({ length: count }, (_, value) => String(value).padStart(2, '0'))
+        .map((value) => `<option value="${value}" ${value === selected ? 'selected' : ''}>${value}</option>`)
+        .join('');
 }
 
 function roomStatusBadge(status: number): string {
@@ -86,7 +97,7 @@ export class LiveManagementPage extends HTMLElement {
             ${this.notice ? `<div class="page-notice success">${escapeHtml(this.notice)}</div>` : ''}
             ${this.error ? `<div class="page-notice error">${escapeHtml(this.error)}<button data-retry>重试</button></div>` : ''}
             ${this.renderFilters()}
-            <div class="data-panel"><div class="table-scroll"><table><thead><tr><th>直播间</th><th>房主</th><th>科室 / 疾病</th><th>置顶</th><th>状态</th><th>开始时间</th><th>更新时间</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div></div>
+            <div class="data-panel"><div class="table-scroll"><table><thead><tr><th>直播间</th><th>房主</th><th>科室 / 疾病</th><th>置顶</th><th>状态</th><th>开播时间</th><th>更新时间</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div></div>
             <div class="pagination"><span>共 ${this.total} 条</span><button data-page="prev" ${this.page <= 1 ? 'disabled' : ''}>上一页</button><b>${this.page} / ${pages}</b><button data-page="next" ${this.page >= pages ? 'disabled' : ''}>下一页</button></div>
         </section>`;
         this.bindEvents(canManage);
@@ -146,16 +157,28 @@ export class LiveManagementPage extends HTMLElement {
     /** 新增时直接打开空表单；编辑时先读取带直播流的详情和封面记录。 */
     private async openEditor(id?: number): Promise<void> {
         try {
-            const room = id ? await liveApi.room(id) : undefined;
-            const cover = room?.coverFileId ? await liveApi.file(room.coverFileId) : undefined;
-            this.showEditor(room, cover);
+            const [room, departments] = await Promise.all([
+                id ? liveApi.room(id) : Promise.resolve(undefined),
+                liveApi.departments(),
+            ]);
+            const [cover, diseases] = await Promise.all([
+                room?.coverFileId ? liveApi.file(room.coverFileId) : Promise.resolve(undefined),
+                room?.departmentId ? liveApi.diseases(room.departmentId) : Promise.resolve([]),
+            ]);
+            this.showEditor(room, cover, departments, diseases);
         } catch (error) {
             this.error = errorMessage(error);
             this.render();
         }
     }
 
-    private showEditor(room?: LiveRoomDetail, cover?: FileObject): void {
+    private showEditor(
+        room: LiveRoomDetail | undefined,
+        cover: FileObject | undefined,
+        departments: Department[],
+        diseases: Disease[],
+    ): void {
+        const startTime = startTimeParts(room?.startTime);
         const streams: LiveRoomStreamInput[] = room?.streams.map((stream) => ({
             id: stream.id,
             streamName: stream.streamName,
@@ -169,25 +192,69 @@ export class LiveManagementPage extends HTMLElement {
             <div class="dialog-fields">
                 <label class="span-2">直播标题<input name="title" required value="${escapeHtml(room?.title)}" /></label>
                 <label class="span-2">直播说明<textarea name="description">${escapeHtml(room?.description)}</textarea></label>
-                <label>科室 ID<input name="departmentId" type="number" min="1" value="${room?.departmentId ?? ''}" /></label>
-                <label>疾病 ID<input name="diseaseId" type="number" min="1" value="${room?.diseaseId ?? ''}" /></label>
-                <label>开始时间<input name="startTime" type="datetime-local" value="${inputDateTime(room?.startTime)}" /></label>
+                <label>科室<select name="departmentId"><option value="">未选择科室</option>${this.departmentOptions(departments, room?.departmentId)}</select></label>
+                <label>疾病<select name="diseaseId" ${room?.departmentId ? '' : 'disabled'}>${this.diseaseOptions(diseases, room?.diseaseId)}</select></label>
+                <label class="span-2">开播时间<div class="broadcast-time-control"><input name="startDate" type="date" value="${startTime.date}" /><select name="startHour" aria-label="开播小时">${timeOptions(24, startTime.hour)}</select><span>时</span><select name="startMinute" aria-label="开播分钟">${timeOptions(60, startTime.minute)}</select><span>分</span></div></label>
                 <label>状态<select name="status"><option value="1" ${room?.status !== 0 && room?.status !== 2 ? 'selected' : ''}>启用</option><option value="0" ${room?.status === 0 ? 'selected' : ''}>停用</option><option value="2" ${room?.status === 2 ? 'selected' : ''}>封禁</option></select></label>
                 <label>置顶<select name="isTop"><option value="0" ${room?.isTop !== 1 ? 'selected' : ''}>否</option><option value="1" ${room?.isTop === 1 ? 'selected' : ''}>是</option></select></label>
-                <label>直播封面<input name="coverFile" type="file" accept="image/*" /><input name="coverFileId" type="hidden" value="${room?.coverFileId ?? ''}" /></label>
+                <label class="span-2 cover-upload-field"><span>直播封面</span><div class="file-upload-control"><input name="coverFile" type="file" accept="image/*" /><span>支持常见图片格式，上传成功后自动关联</span></div><input name="coverFileId" type="hidden" value="${room?.coverFileId ?? ''}" /></label>
                 <div class="cover-preview span-2" data-cover-preview>${this.coverPreview(cover)}</div>
                 <div class="stream-editor span-2"><div class="stream-editor-heading"><div><strong>直播流</strong><small>至少保留一路，同一房间只能有一路默认流</small></div><button class="secondary-button" type="button" data-add-stream>＋ 添加一路</button></div><div data-stream-list></div></div>
             </div><p class="dialog-error" data-dialog-error></p>
             <footer><button type="button" class="secondary-button" data-close>取消</button><button type="submit" class="primary-button">保存直播间</button></footer>
         </form>`);
         this.renderStreamRows(dialog, streams);
+        this.bindCatalogSelectors(dialog);
         dialog.querySelector('[data-add-stream]')?.addEventListener('click', () => {
             this.syncStreamRows(dialog, streams);
-            streams.push({ streamName: '', title: '', sortNo: streams.length, isDefault: 0, status: 1 });
+            const nextSortNo = streams.reduce(
+                (highest, stream) => Math.max(highest, stream.sortNo ?? 0),
+                0,
+            ) + 1;
+            streams.push({ streamName: '', title: '', sortNo: nextSortNo, isDefault: 0, status: 1 });
             this.renderStreamRows(dialog, streams);
         });
         this.bindCoverUpload(dialog);
         this.bindEditorSubmit(dialog, room?.id);
+    }
+
+    /** 科室下拉展示名称；已停用但当前正在使用的科室仍允许回显。 */
+    private departmentOptions(departments: Department[], selectedId?: number | null): string {
+        return departments
+            .filter((department) => department.status === 1 || department.id === selectedId)
+            .map((department) => `<option value="${department.id}" ${department.id === selectedId ? 'selected' : ''}>${escapeHtml(department.deptName)}${department.status === 1 ? '' : '（已停用）'}</option>`)
+            .join('');
+    }
+
+    /** 疾病下拉始终限制在当前科室内，并用名称替代数据库 ID。 */
+    private diseaseOptions(diseases: Disease[], selectedId?: number | null): string {
+        return `<option value="">未选择疾病</option>${diseases
+            .filter((disease) => disease.status === 1 || disease.id === selectedId)
+            .map((disease) => `<option value="${disease.id}" ${disease.id === selectedId ? 'selected' : ''}>${escapeHtml(disease.diseaseName)}${disease.status === 1 ? '' : '（已停用）'}</option>`)
+            .join('')}`;
+    }
+
+    /** 科室变化后重新查询疾病候选项，避免提交不属于该科室的疾病。 */
+    private bindCatalogSelectors(dialog: HTMLDialogElement): void {
+        const department = dialog.querySelector<HTMLSelectElement>('[name="departmentId"]');
+        const disease = dialog.querySelector<HTMLSelectElement>('[name="diseaseId"]');
+        department?.addEventListener('change', () => {
+            if (!disease) return;
+            const departmentId = optionalNumber(department.value);
+            disease.disabled = !departmentId;
+            disease.innerHTML = '<option value="">正在加载...</option>';
+            if (!departmentId) {
+                disease.innerHTML = this.diseaseOptions([]);
+                return;
+            }
+            void liveApi.diseases(departmentId).then((diseases) => {
+                disease.innerHTML = this.diseaseOptions(diseases);
+            }).catch((error) => {
+                disease.innerHTML = '<option value="">加载失败</option>';
+                const errorBox = dialog.querySelector<HTMLElement>('[data-dialog-error]');
+                if (errorBox) errorBox.textContent = errorMessage(error);
+            });
+        });
     }
 
     private coverPreview(file?: FileObject): string {
@@ -271,7 +338,11 @@ export class LiveManagementPage extends HTMLElement {
                 coverFileId: optionalNumber(formValue(data, 'coverFileId')),
                 departmentId: optionalNumber(formValue(data, 'departmentId')),
                 diseaseId: optionalNumber(formValue(data, 'diseaseId')),
-                startTime: apiDateTime(formValue(data, 'startTime')),
+                startTime: composeStartTime(
+                    formValue(data, 'startDate'),
+                    formValue(data, 'startHour'),
+                    formValue(data, 'startMinute'),
+                ),
                 isTop: Number(formValue(data, 'isTop')),
                 status: Number(formValue(data, 'status')),
                 streams,

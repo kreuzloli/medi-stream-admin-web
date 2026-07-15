@@ -68,4 +68,22 @@ describe('liveApi', () => {
             '/admin/api/tencent-live/urls?streamName=main&ttlSeconds=3600&transcodeTemplate=hd',
         );
     });
+
+    it('loads catalog names and filters diseases by department', async () => {
+        vi.spyOn(sessionStore, 'accessToken', 'get').mockReturnValue('admin-token');
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(new Response(JSON.stringify([{ id: 3, deptName: '心内科', status: 1 }]), {
+                status: 200, headers: { 'Content-Type': 'application/json' },
+            }))
+            .mockResolvedValueOnce(new Response(JSON.stringify([{ id: 7, deptId: 3, diseaseName: '冠心病', status: 1 }]), {
+                status: 200, headers: { 'Content-Type': 'application/json' },
+            }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        await liveApi.departments();
+        await liveApi.diseases(3);
+
+        expect(fetchMock.mock.calls[0][0]).toBe('/admin/api/departments');
+        expect(fetchMock.mock.calls[1][0]).toBe('/admin/api/diseases?deptId=3');
+    });
 });

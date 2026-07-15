@@ -1,7 +1,15 @@
 import { sessionStore } from '../auth/session';
 import { logger } from '../common/logger';
 import { navigate } from '../router/routes';
-import type { FileObject, LiveRoom, LiveRoomDetail, LiveUrls, PageResponse } from '../types';
+import type {
+    Department,
+    Disease,
+    FileObject,
+    LiveRoom,
+    LiveRoomDetail,
+    LiveUrls,
+    PageResponse,
+} from '../types';
 import { ApiError, requestJson } from './http';
 
 type QueryValue = string | number | undefined;
@@ -101,6 +109,14 @@ export const liveApi = {
         const body = new FormData();
         body.append('file', file);
         return request('/files/upload', { method: 'POST', body });
+    },
+    /** 获取科室名称候选项，直播间提交时仍使用对应 ID。 */
+    departments(): Promise<Department[]> {
+        return request('/departments');
+    },
+    /** 按科室加载疾病名称，避免跨科室选择错误。 */
+    diseases(departmentId: number): Promise<Disease[]> {
+        return request(`/diseases${queryString({ deptId: departmentId })}`);
     },
     generateUrls(values: LiveUrlQuery): Promise<LiveUrls> {
         return request(`/tencent-live/urls${queryString({ ...values })}`);

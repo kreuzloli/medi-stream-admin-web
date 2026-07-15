@@ -216,6 +216,15 @@ td code { padding: 4px 7px; border-radius: 5px; color: #0755a8; background: #edf
 .cover-preview div { display: grid; gap: 5px; }
 .cover-preview strong { color: #29415c; font-size: 13px; }
 .cover-preview small { color: #8191a4; font-size: 11px; }
+.cover-upload-field > span { color: #425873; font-size: 12px; font-weight: 650; }
+.file-upload-control { min-height: 54px; display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px dashed #b9cce0; border-radius: 8px; background: #f8fbff; }
+.file-upload-control input[type="file"] { flex: 1; min-width: 0; height: auto; padding: 0; border: 0; color: #697d94; background: transparent; font-size: 12px; }
+.file-upload-control input[type="file"]::file-selector-button { min-height: 36px; margin-right: 12px; padding: 0 16px; border: 1px solid var(--blue-600); border-radius: 7px; color: #fff; background: var(--blue-600); box-shadow: 0 4px 12px #1261d51f; cursor: pointer; font: inherit; font-weight: 650; transition: background .18s, border-color .18s, transform .18s; }
+.file-upload-control input[type="file"]::file-selector-button:hover { border-color: #0d53ba; background: #0d53ba; transform: translateY(-1px); }
+.file-upload-control > span { flex: 0 0 auto; color: #8a9aad; font-size: 11px; font-weight: 400; }
+.broadcast-time-control { display: grid; grid-template-columns: minmax(180px, 1fr) 86px auto 86px auto; align-items: center; gap: 8px; }
+.broadcast-time-control input, .broadcast-time-control select { width: 100%; min-width: 0; }
+.broadcast-time-control span { color: #6d8096; font-size: 12px; font-weight: 500; }
 .stream-editor { border-top: 1px solid #e5ebf2; padding-top: 18px; }
 .stream-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 .stream-editor-heading > div { display: grid; gap: 4px; }
@@ -279,6 +288,9 @@ td code { padding: 4px 7px; border-radius: 5px; color: #0755a8; background: #edf
     .stream-row { grid-template-columns: 1fr 1fr; }
     .live-url-list > div { grid-template-columns: 1fr auto; }
     .live-url-list span { grid-column: 1 / -1; }
+    .file-upload-control { align-items: stretch; flex-direction: column; }
+    .file-upload-control > span { padding-left: 2px; }
+    .broadcast-time-control { grid-template-columns: minmax(0, 1fr) 72px auto 72px auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
