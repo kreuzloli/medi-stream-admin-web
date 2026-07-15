@@ -7,8 +7,9 @@ describe('matchRoute', () => {
         expect(matchRoute('/')).toMatchObject({ title: '工作台', kind: 'welcome' });
     });
 
-    it('returns the matching placeholder route for a known module', () => {
-        expect(matchRoute('/live/rooms')).toMatchObject({ title: '直播间管理', kind: 'placeholder' });
+    it('maps live routes to their real pages', () => {
+        expect(matchRoute('/live/rooms')).toMatchObject({ title: '直播间管理', kind: 'liveRooms' });
+        expect(matchRoute('/live/tencent')).toMatchObject({ title: '腾讯云直播', kind: 'tencentLive' });
     });
 
     it.each([

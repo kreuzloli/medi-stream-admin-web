@@ -64,3 +64,62 @@ export interface UserInfo {
 export interface IdsResponse {
     ids: number[];
 }
+
+export interface FileObject {
+    id: number;
+    fileName: string;
+    fileUrl: string;
+    mimeType?: string | null;
+    fileSize?: number | null;
+    sha256?: string | null;
+    createdAt?: string | null;
+}
+
+export interface LiveRoom {
+    id: number;
+    ownerUserId?: number | null;
+    ownerAdminId?: number | null;
+    roomCode: string;
+    title: string;
+    description?: string | null;
+    coverFileId?: number | null;
+    departmentId?: number | null;
+    diseaseId?: number | null;
+    isTop: number;
+    startTime?: string | null;
+    status: number;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+}
+
+export interface LiveRoomStream {
+    id: number;
+    roomId: number;
+    streamCode: string;
+    streamName: string;
+    title?: string | null;
+    sortNo: number;
+    isDefault: number;
+    status: number;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+}
+
+export interface LiveRoomDetail extends LiveRoom {
+    streams: LiveRoomStream[];
+}
+
+export interface LiveUrls {
+    streamName: string;
+    expireAtEpochSeconds: number;
+    txTimeHex: string;
+    pushWebrtc: string;
+    pushRtmp: string;
+    playWebrtc: string;
+    playRtmp: string;
+    playFlv: string;
+    playHls: string;
+    transcodeTemplate?: string | null;
+    playFlvTranscoded?: string | null;
+    playHlsTranscoded?: string | null;
+}

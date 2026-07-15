@@ -4,7 +4,7 @@ import { logger } from '../common/logger';
 export interface AppRoute {
     path: string;
     title: string;
-    kind: 'welcome' | 'placeholder' | 'users' | 'admins' | 'roles' | 'permissions';
+    kind: 'welcome' | 'placeholder' | 'users' | 'admins' | 'roles' | 'permissions' | 'liveRooms' | 'tencentLive';
     description?: string;
 }
 
@@ -13,8 +13,8 @@ const routes: AppRoute[] = [
     { path: '/users', title: '用户管理', kind: 'users', description: '管理平台注册用户及账号状态。' },
     { path: '/hospitals', title: '医院管理', kind: 'placeholder', description: '维护医院机构与关联信息。' },
     { path: '/catalog', title: '内容目录', kind: 'placeholder', description: '维护医疗内容目录与资料。' },
-    { path: '/live/rooms', title: '直播间管理', kind: 'placeholder', description: '管理直播间、归属关系与直播状态。' },
-    { path: '/live/tencent', title: '腾讯云直播', kind: 'placeholder', description: '管理推流、播放与腾讯云直播配置。' },
+    { path: '/live/rooms', title: '直播间管理', kind: 'liveRooms', description: '管理直播间、归属关系与直播状态。' },
+    { path: '/live/tencent', title: '腾讯云直播', kind: 'tencentLive', description: '生成推拉流地址并查询腾讯云直播状态。' },
     { path: '/access/admins', title: '管理员', kind: 'admins', description: '维护后台管理员账号和状态。' },
     { path: '/access/roles', title: '角色', kind: 'roles', description: '配置管理端角色与权限范围。' },
     { path: '/access/permissions', title: '权限', kind: 'permissions', description: '维护权限代码和资源定义。' },

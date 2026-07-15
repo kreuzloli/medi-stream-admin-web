@@ -5,7 +5,9 @@ import './components/admin-header';
 import './components/admin-sidebar';
 import './pages/login-page';
 import './pages/access-management-page';
+import './pages/live-management-page';
 import './pages/placeholder-page';
+import './pages/tencent-live-page';
 import './pages/user-management-page';
 import './pages/welcome-page';
 import { matchRoute, navigate, routePathFromHash } from './router/routes';
@@ -85,9 +87,13 @@ export class AdminApp extends HTMLElement {
             ? '<welcome-page></welcome-page>'
             : route.kind === 'users'
                 ? '<user-management-page></user-management-page>'
-                : ['admins', 'roles', 'permissions'].includes(route.kind)
-                    ? '<access-management-page></access-management-page>'
-                    : '<placeholder-page></placeholder-page>';
+                : route.kind === 'liveRooms'
+                    ? '<live-management-page></live-management-page>'
+                    : route.kind === 'tencentLive'
+                        ? '<tencent-live-page></tencent-live-page>'
+                        : ['admins', 'roles', 'permissions'].includes(route.kind)
+                            ? '<access-management-page></access-management-page>'
+                            : '<placeholder-page></placeholder-page>';
         this.innerHTML = `
             <div class="admin-layout ${this.sidebarCollapsed ? 'is-collapsed' : ''} ${this.mobileSidebarOpen ? 'mobile-open' : ''}">
                 <admin-sidebar></admin-sidebar>
@@ -103,6 +109,8 @@ export class AdminApp extends HTMLElement {
         this.querySelector<PlaceholderPage>('placeholder-page')?.update(route);
         const accessPage = this.querySelector<AccessManagementPage>('access-management-page');
         if (accessPage) void accessPage.update(route.kind as AccessPageKind);
+        const livePage = this.querySelector<import('./pages/live-management-page').LiveManagementPage>('live-management-page');
+        if (livePage) void livePage.update();
         this.querySelector('.sidebar-backdrop')?.addEventListener('click', this.closeMobileSidebar);
     };
 

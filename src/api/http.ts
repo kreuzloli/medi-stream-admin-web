@@ -26,7 +26,7 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
     const { token, headers: inputHeaders, ...requestOptions } = options;
     const headers = new Headers(inputHeaders);
     headers.set('Accept', 'application/json');
-    if (requestOptions.body) {
+    if (requestOptions.body && !(requestOptions.body instanceof FormData)) {
         headers.set('Content-Type', 'application/json');
     }
     if (token) {

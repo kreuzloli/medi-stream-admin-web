@@ -28,6 +28,9 @@ Medi Stream 管理后台前端，使用 Vite、TypeScript 和原生 Web Componen
 - 管理员增删改查、状态、密码重置和角色分配
 - 角色增删改查、状态和权限分配
 - 权限定义增删改查和状态管理
+- 直播间分页查询、筛选、创建、编辑、删除、置顶、状态和房主管理
+- 直播间封面上传及多路直播流维护
+- 腾讯云推流/播放地址生成和直播流状态查询
 - 未开发模块的统一占位页
 - 统一 API 错误处理和关键状态日志
 - `/admin/` 子路径构建与部署
@@ -114,6 +117,9 @@ http://127.0.0.1:8081/auth/login
 | 管理员账号管理 | `/admin/api/admins`、`/admin/api/admins/:id/*` |
 | 角色与角色权限 | `/admin/api/roles`、`/admin/api/roles/:id/permissions` |
 | 权限定义管理 | `/admin/api/permissions`、`/admin/api/permissions/:id/status` |
+| 文件上传与查询 | `POST /admin/api/files/upload`、`GET /admin/api/files/:id` |
+| 直播间与直播流 | `/admin/api/live-rooms`、`/admin/api/live-rooms/:id/*` |
+| 腾讯云直播工具 | `GET /admin/api/tencent-live/urls`、`POST /admin/api/tencent-live/stream-state` |
 
 登录成功后，后续请求使用：
 
@@ -158,6 +164,11 @@ location /admin/api/ {
 
 location /admin/ {
     try_files $uri $uri/ /admin/index.html;
+}
+
+location /uploads/ {
+    alias /var/lib/medi-stream/uploads/;
+    try_files $uri =404;
 }
 ```
 
@@ -205,7 +216,5 @@ GET /admin/api/auth/me
 
 - 医院管理
 - 内容目录
-- 直播间管理
-- 腾讯云直播
 
 后续接入这些模块时，应继续复用现有 API、会话、路由和页面框架，不在页面组件内重复实现鉴权逻辑。
