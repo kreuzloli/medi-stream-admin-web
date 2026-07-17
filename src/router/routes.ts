@@ -4,7 +4,8 @@ import { logger } from '../common/logger';
 export interface AppRoute {
     path: string;
     title: string;
-    kind: 'welcome' | 'placeholder' | 'users' | 'admins' | 'roles' | 'permissions' | 'liveRooms' | 'tencentLive';
+    kind: 'welcome' | 'placeholder' | 'users' | 'admins' | 'roles' | 'permissions'
+        | 'liveRooms' | 'liveWatch' | 'livePush' | 'livePlay' | 'tencentLive';
     description?: string;
 }
 
@@ -14,6 +15,9 @@ const routes: AppRoute[] = [
     { path: '/hospitals', title: '医院管理', kind: 'placeholder', description: '维护医院机构与关联信息。' },
     { path: '/catalog', title: '内容目录', kind: 'placeholder', description: '维护医疗内容目录与资料。' },
     { path: '/live/rooms', title: '直播间管理', kind: 'liveRooms', description: '管理直播间、归属关系与直播状态。' },
+    { path: '/live/watch', title: '观看直播', kind: 'liveWatch', description: '查看直播间状态并观看管理员直播。' },
+    { path: '/live/push', title: '直播推流', kind: 'livePush', description: '选择配置和直播流并开始推流。' },
+    { path: '/live/play', title: '观看直播', kind: 'livePlay', description: '播放直播间当前活动链路。' },
     { path: '/live/tencent', title: '腾讯云直播', kind: 'tencentLive', description: '生成推拉流地址并查询腾讯云直播状态。' },
     { path: '/access/admins', title: '管理员', kind: 'admins', description: '维护后台管理员账号和状态。' },
     { path: '/access/roles', title: '角色', kind: 'roles', description: '配置管理端角色与权限范围。' },
@@ -35,6 +39,13 @@ export function routePathFromHash(hash: string): string {
         return '/';
     }
     return path.startsWith('/') ? path : `/${path}`;
+}
+
+/** 从 Hash 查询参数读取有效的正整数直播间 ID。 */
+export function routeRoomIdFromHash(hash: string): number | null {
+    const query = hash.split('?')[1] ?? '';
+    const roomId = Number(new URLSearchParams(query).get('roomId'));
+    return Number.isInteger(roomId) && roomId > 0 ? roomId : null;
 }
 
 /** 更新 Hash 地址并通知根组件重新渲染，不触发整页刷新。 */

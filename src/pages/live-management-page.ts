@@ -1,6 +1,17 @@
 import { liveApi, type LiveRoomInput, type LiveRoomStreamInput } from '../api/live';
+import { ApiError } from '../api/http';
+import { managementApi } from '../api/management';
 import { sessionStore } from '../auth/session';
-import type { Department, Disease, FileObject, LiveRoom, LiveRoomDetail } from '../types';
+import { navigate } from '../router/routes';
+import type {
+    Administrator,
+    Department,
+    Disease,
+    FileObject,
+    LiveRoom,
+    LiveRoomDetail,
+    UserInfo,
+} from '../types';
 import {
     emptyRows,
     errorMessage,
@@ -10,6 +21,9 @@ import {
     loadingRows,
     openDialog,
 } from './management-shared';
+import { isTencentStreamActive } from './live-runtime';
+
+type LiveRuntimeStatus = 'pending' | 'loading' | 'live' | 'offline' | 'error';
 
 /** 把可选数字字段转换为 API 使用的 undefined，避免把空输入提交为 0。 */
 function optionalNumber(value: string): number | undefined {
@@ -52,6 +66,10 @@ export class LiveManagementPage extends HTMLElement {
     private filters = { roomCode: '', title: '', status: '', isTop: '' };
     private page = 1;
     private total = 0;
+    private runtimeStatuses = new Map<number, LiveRuntimeStatus>();
+    private departmentNames = new Map<number, string>();
+    private diseaseNames = new Map<number, string>();
+    private catalogLoadFailed = false;
 
     async update(): Promise<void> {
         await this.load();
@@ -66,6 +84,8 @@ export class LiveManagementPage extends HTMLElement {
             const result = await liveApi.rooms({ page: this.page, size: 20, ...this.filters });
             this.rooms = result.records;
             this.total = result.total;
+            this.rooms.forEach((room) => this.runtimeStatuses.set(room.id, 'loading'));
+            await Promise.all([this.queryLiveStatuses(), this.loadCatalogNames()]);
         } catch (error) {
             this.error = errorMessage(error);
         } finally {
@@ -77,27 +97,31 @@ export class LiveManagementPage extends HTMLElement {
     /** 组合筛选区、列表和分页，并根据 LIVE_MANAGE 控制写操作。 */
     private render(): void {
         const canManage = sessionStore.can('LIVE_MANAGE');
-        const rows = this.loading ? loadingRows(8) : this.rooms.length === 0 ? emptyRows(8, '暂无直播间')
+        const canPush = sessionStore.can('TENCENT_LIVE_MANAGE');
+        const rows = this.loading ? loadingRows(9) : this.rooms.length === 0 ? emptyRows(9, '暂无直播间')
             : this.rooms.map((room) => `<tr>
                 <td><div class="primary-cell"><strong>${escapeHtml(room.title)}</strong><small>${escapeHtml(room.roomCode)}</small></div></td>
                 <td>${room.ownerAdminId ? `管理员 #${room.ownerAdminId}` : `用户 #${room.ownerUserId ?? '—'}`}</td>
-                <td>${room.departmentId ?? '—'} / ${room.diseaseId ?? '—'}</td>
+                <td>${this.catalogLabel(room)}</td>
                 <td>${room.isTop === 1 ? '<span class="status-badge enabled"><i></i>已置顶</span>' : '普通'}</td>
-                <td>${roomStatusBadge(room.status)}</td><td>${formatDate(room.startTime)}</td><td>${formatDate(room.updatedAt)}</td>
-                <td class="row-actions">${canManage ? `
+                <td>${roomStatusBadge(room.status)}</td><td>${this.runtimeStatusBadge(this.runtimeStatuses.get(room.id) ?? 'pending')}</td><td>${formatDate(room.startTime)}</td><td>${formatDate(room.updatedAt)}</td>
+                <td class="row-actions">
+                    ${canPush ? `<button class="primary-action" data-action="push" data-id="${room.id}">开播</button>` : ''}
+                    <button data-action="watch" data-id="${room.id}">观看</button>
+                    ${canManage ? `
                     <button data-action="edit" data-id="${room.id}">编辑</button>
                     <button data-action="owner" data-id="${room.id}">房主</button>
                     <button data-action="top" data-id="${room.id}">${room.isTop === 1 ? '取消置顶' : '置顶'}</button>
                     <button data-action="status" data-id="${room.id}">${room.status === 1 ? '停用' : '启用'}</button>
-                    <button class="danger" data-action="delete" data-id="${room.id}">删除</button>` : '—'}</td>
+                    <button class="danger" data-action="delete" data-id="${room.id}">删除</button>` : ''}</td>
             </tr>`).join('');
         const pages = Math.max(1, Math.ceil(this.total / 20));
         this.innerHTML = `<section class="management-page live-management-page">
-            <div class="management-titlebar"><div><h2>直播间管理</h2><p>维护直播间信息、封面和多路腾讯云直播流</p></div>${canManage ? '<button class="primary-button" data-create>＋ 新增直播间</button>' : ''}</div>
+            <div class="management-titlebar"><div><h2>直播间管理</h2><p>维护直播间信息、封面和多路腾讯云直播流</p></div><div class="titlebar-actions"><button class="secondary-button" data-refresh-live-status>刷新直播状态</button>${canManage ? '<button class="primary-button" data-create>＋ 新增直播间</button>' : ''}</div></div>
             ${this.notice ? `<div class="page-notice success">${escapeHtml(this.notice)}</div>` : ''}
             ${this.error ? `<div class="page-notice error">${escapeHtml(this.error)}<button data-retry>重试</button></div>` : ''}
             ${this.renderFilters()}
-            <div class="data-panel"><div class="table-scroll"><table><thead><tr><th>直播间</th><th>房主</th><th>科室 / 疾病</th><th>置顶</th><th>状态</th><th>开播时间</th><th>更新时间</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div></div>
+            <div class="data-panel"><div class="table-scroll"><table><thead><tr><th>直播间</th><th>房主</th><th>科室 / 疾病</th><th>置顶</th><th>业务状态</th><th>直播状态</th><th>开播时间</th><th>更新时间</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table></div></div>
             <div class="pagination"><span>共 ${this.total} 条</span><button data-page="prev" ${this.page <= 1 ? 'disabled' : ''}>上一页</button><b>${this.page} / ${pages}</b><button data-page="next" ${this.page >= pages ? 'disabled' : ''}>下一页</button></div>
         </section>`;
         this.bindEvents(canManage);
@@ -116,6 +140,7 @@ export class LiveManagementPage extends HTMLElement {
     /** 绑定筛选、分页和写操作，避免只读管理员发出变更请求。 */
     private bindEvents(canManage: boolean): void {
         this.querySelector('[data-retry]')?.addEventListener('click', () => void this.load());
+        this.querySelector('[data-refresh-live-status]')?.addEventListener('click', () => void this.refreshLiveStatuses());
         this.querySelector<HTMLFormElement>('[data-filter]')?.addEventListener('submit', (event) => {
             event.preventDefault();
             const data = new FormData(event.currentTarget as HTMLFormElement);
@@ -135,23 +160,115 @@ export class LiveManagementPage extends HTMLElement {
             this.page += button.dataset.page === 'next' ? 1 : -1;
             void this.load();
         }));
-        if (!canManage) return;
-        this.querySelector('[data-create]')?.addEventListener('click', () => this.openEditor());
+        if (canManage) this.querySelector('[data-create]')?.addEventListener('click', () => this.openEditor());
         this.querySelectorAll<HTMLButtonElement>('[data-action]').forEach((button) => button.addEventListener('click', () => {
             void this.handleAction(button.dataset.action ?? '', Number(button.dataset.id));
         }));
+    }
+
+    /** 使用运行信息中的活动链路查询真实腾讯云状态；延期接口 404 保持“待接入”。 */
+    private async queryLiveStatuses(): Promise<void> {
+        await Promise.all(this.rooms.map(async (room) => {
+            try {
+                const runtime = await liveApi.liveRuntime(room.id);
+                if (!runtime.activeStreamId) {
+                    this.runtimeStatuses.set(room.id, 'offline');
+                    return;
+                }
+                const result = await liveApi.roomStreamState(room.id, runtime.activeStreamId);
+                this.runtimeStatuses.set(
+                    room.id,
+                    isTencentStreamActive(result.Response) ? 'live' : 'offline',
+                );
+            } catch (error) {
+                this.runtimeStatuses.set(
+                    room.id,
+                    error instanceof ApiError && error.status === 404 ? 'pending' : 'error',
+                );
+            }
+        }));
+    }
+
+    private async refreshLiveStatuses(): Promise<void> {
+        this.rooms.forEach((room) => this.runtimeStatuses.set(room.id, 'loading'));
+        this.render();
+        await this.queryLiveStatuses();
+        this.render();
+    }
+
+    private runtimeStatusBadge(status: LiveRuntimeStatus): string {
+        if (status === 'live') return '<span class="status-badge enabled"><i></i>直播中</span>';
+        if (status === 'offline') return '<span class="status-badge disabled"><i></i>未开播</span>';
+        if (status === 'loading') return '<span class="status-badge pending"><i></i>查询中</span>';
+        if (status === 'error') return '<span class="status-badge banned"><i></i>查询失败</span>';
+        return '<span class="status-badge pending"><i></i>待接入</span>';
+    }
+
+    /** 为当前页涉及的目录建立名称映射，同一科室的疾病列表只读取一次。 */
+    private async loadCatalogNames(): Promise<void> {
+        this.departmentNames.clear();
+        this.diseaseNames.clear();
+        this.catalogLoadFailed = false;
+        try {
+            const departments = await liveApi.departments();
+            departments.forEach((department) => this.departmentNames.set(department.id, department.deptName));
+            const departmentIds = [...new Set(this.rooms
+                .map((room) => room.departmentId)
+                .filter((id): id is number => id !== null && id !== undefined))];
+            await Promise.all(departmentIds.map(async (departmentId) => {
+                const diseases = await liveApi.diseases(departmentId);
+                diseases.forEach((disease) => this.diseaseNames.set(disease.id, disease.diseaseName));
+            }));
+        } catch {
+            this.catalogLoadFailed = true;
+        }
+    }
+
+    /** 列表只展示业务名称；失效历史关联也不回退暴露数据库 ID。 */
+    private catalogLabel(room: LiveRoom): string {
+        if (this.catalogLoadFailed) return '名称加载失败';
+        if (!room.departmentId && !room.diseaseId) return '—';
+        const department = room.departmentId ? this.departmentNames.get(room.departmentId) ?? '未知科室' : '—';
+        const disease = room.diseaseId ? this.diseaseNames.get(room.diseaseId) ?? '未知疾病' : '—';
+        return `${escapeHtml(department)} / ${escapeHtml(disease)}`;
     }
 
     /** 分派直播间编辑、归属、置顶、状态和删除操作。 */
     private async handleAction(action: string, id: number): Promise<void> {
         const room = this.rooms.find((item) => item.id === id);
         if (!room) return;
+        if (action === 'push') return navigate(`/live/push?roomId=${id}`);
+        if (action === 'watch') return this.openWatch(id);
         if (action === 'edit') return this.openEditor(id);
         if (action === 'owner') return this.openOwnerEditor(room);
         if (!window.confirm(action === 'delete' ? '删除后直播间及其直播流无法恢复，确认继续？' : '确认执行该操作？')) return;
         if (action === 'top') return this.run(() => liveApi.setRoomTop(id, room.isTop === 1 ? 0 : 1), '置顶状态已更新');
         if (action === 'status') return this.run(() => liveApi.setRoomStatus(id, room.status === 1 ? 0 : 1), '直播间状态已更新');
         if (action === 'delete') await this.run(() => liveApi.deleteRoom(id), '直播间已删除');
+    }
+
+    /** 观看前读取活动链路；延期接口未部署时给出准确提示。 */
+    private async openWatch(roomId: number): Promise<void> {
+        try {
+            const runtime = await liveApi.liveRuntime(roomId);
+            if (!runtime.activeStreamId) {
+                this.error = '当前直播间未开播';
+                this.render();
+                return;
+            }
+            const state = await liveApi.roomStreamState(roomId, runtime.activeStreamId);
+            if (!isTencentStreamActive(state.Response)) {
+                this.error = '当前直播间未开播';
+                this.render();
+                return;
+            }
+            navigate(`/live/play?roomId=${roomId}`);
+        } catch (error) {
+            this.error = error instanceof ApiError && error.status === 404
+                ? '直播运行信息接口暂未接入'
+                : errorMessage(error);
+            this.render();
+        }
     }
 
     /** 新增时直接打开空表单；编辑时先读取带直播流的详情和封面记录。 */
@@ -362,25 +479,102 @@ export class LiveManagementPage extends HTMLElement {
         });
     }
 
-    /** 房主变更只提交普通用户或管理员其中一个 ID。 */
+    /** 房主候选项展示业务名称，提交时仍只传普通用户或管理员其中一个 ID。 */
     private openOwnerEditor(room: LiveRoom): void {
         const type = room.ownerUserId ? 'user' : 'admin';
         const dialog = openDialog(this, `<form class="dialog-card"><header><div><h3>变更房主</h3><p>${escapeHtml(room.title)}</p></div><button type="button" class="dialog-close" data-close>×</button></header><div class="dialog-fields">
             <label>房主类型<select name="ownerType"><option value="admin" ${type === 'admin' ? 'selected' : ''}>管理员</option><option value="user" ${type === 'user' ? 'selected' : ''}>普通用户</option></select></label>
-            <label>房主 ID<input name="ownerId" type="number" min="1" required value="${room.ownerAdminId ?? room.ownerUserId ?? ''}" /></label>
-        </div><p class="dialog-error" data-dialog-error></p><footer><button type="button" class="secondary-button" data-close>取消</button><button type="submit" class="primary-button">确认变更</button></footer></form>`);
+            <label>选择房主<select name="ownerId" required disabled><option value="">正在加载...</option></select></label>
+        </div><p class="dialog-error" data-dialog-error></p><footer><button type="button" class="secondary-button" data-close>取消</button><button type="submit" class="primary-button" disabled>确认变更</button></footer></form>`);
+        const ownerType = dialog.querySelector<HTMLSelectElement>('[name="ownerType"]')!;
+        const owner = dialog.querySelector<HTMLSelectElement>('[name="ownerId"]')!;
+        const submit = dialog.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+        const errorBox = dialog.querySelector<HTMLElement>('[data-dialog-error]')!;
+        let requestVersion = 0;
+
+        /** 切换房主类型时重新加载候选项，避免沿用另一类型的 ID。 */
+        const loadOwners = async (): Promise<void> => {
+            const version = ++requestVersion;
+            const ownerKind = ownerType.value;
+            owner.disabled = true;
+            submit.disabled = true;
+            owner.innerHTML = '<option value="">正在加载...</option>';
+            errorBox.textContent = '';
+            try {
+                const currentId = ownerKind === type ? room.ownerAdminId ?? room.ownerUserId ?? undefined : undefined;
+                const candidates = await this.loadOwnerCandidates(ownerKind);
+                if (version !== requestVersion) return;
+                owner.innerHTML = this.ownerOptions(ownerKind, candidates, currentId);
+                owner.disabled = false;
+                submit.disabled = owner.value === '';
+            } catch (error) {
+                if (version !== requestVersion) return;
+                owner.innerHTML = '<option value="">候选项加载失败</option>';
+                errorBox.textContent = errorMessage(error);
+            }
+        };
+        ownerType.addEventListener('change', () => void loadOwners());
+        owner.addEventListener('change', () => { submit.disabled = owner.value === ''; });
+        void loadOwners();
         dialog.querySelector<HTMLFormElement>('form')?.addEventListener('submit', (event) => {
             event.preventDefault();
             const data = new FormData(event.currentTarget as HTMLFormElement);
             const ownerId = Number(formValue(data, 'ownerId'));
+            if (!ownerId) {
+                errorBox.textContent = '请选择房主';
+                return;
+            }
             const userOwner = formValue(data, 'ownerType') === 'user';
+            submit.disabled = true;
             void liveApi.changeRoomOwner(room.id, userOwner ? ownerId : undefined, userOwner ? undefined : ownerId)
                 .then(() => { dialog.remove(); this.notice = '房主已变更'; void this.load(); })
                 .catch((error) => {
-                    const errorBox = dialog.querySelector<HTMLElement>('[data-dialog-error]');
-                    if (errorBox) errorBox.textContent = errorMessage(error);
+                    errorBox.textContent = errorMessage(error);
+                    submit.disabled = false;
                 });
         });
+    }
+
+    /** 分页读取全部房主候选，避免超过单页上限后只能选择前 200 条。 */
+    private async loadOwnerCandidates(type: string): Promise<Array<Administrator | UserInfo>> {
+        const loadPage = (page: number) => type === 'user'
+            ? managementApi.users({ page, size: 200 })
+            : managementApi.admins({ page, size: 200 });
+        const first = await loadPage(1);
+        const candidates: Array<Administrator | UserInfo> = [...first.records];
+        if (first.pages <= 1) return candidates;
+        const remaining = await Promise.all(
+            Array.from({ length: first.pages - 1 }, (_, index) => loadPage(index + 2)),
+        );
+        remaining.forEach((page) => candidates.push(...page.records));
+        return candidates;
+    }
+
+    /** 构造房主名称选项，并允许已停用但当前绑定的房主继续回显。 */
+    private ownerOptions(
+        type: string,
+        candidates: Array<Administrator | UserInfo>,
+        selectedId?: number,
+    ): string {
+        const options = candidates
+            .filter((candidate) => candidate.status === 1 || candidate.id === selectedId)
+            .map((candidate) => {
+                const label = type === 'user'
+                    ? this.userOwnerLabel(candidate as UserInfo)
+                    : `${(candidate as Administrator).realName}（${(candidate as Administrator).username}）`;
+                const suffix = candidate.status === 1 ? '' : '（已停用）';
+                const selected = candidate.id === selectedId ? 'selected' : '';
+                return `<option value="${candidate.id}" ${selected}>${escapeHtml(label)}${suffix}</option>`;
+            })
+            .join('');
+        return `<option value="">请选择房主</option>${options}`;
+    }
+
+    /** 普通用户优先显示昵称，同时保留真实姓名或用户编码用于辨识。 */
+    private userOwnerLabel(user: UserInfo): string {
+        const nickname = user.nickname?.trim();
+        if (nickname) return `${nickname}（${user.realName}）`;
+        return user.userCode ? `${user.realName}（${user.userCode}）` : user.realName;
     }
 
     /** 统一处理行操作错误并在成功后刷新列表。 */

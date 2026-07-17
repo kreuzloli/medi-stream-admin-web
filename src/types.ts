@@ -141,3 +141,38 @@ export interface LiveUrls {
     playFlvTranscoded?: string | null;
     playHlsTranscoded?: string | null;
 }
+
+/** 可供主播生成直播地址的安全配置，不包含任何腾讯云密钥。 */
+export interface TencentLiveConfigOption {
+    id: number;
+    name: string;
+    appName: string;
+    pushDomain: string;
+    playDomain: string;
+    defaultTtlSeconds: number;
+}
+
+/** 一次房间 URL 生成结果中的单路直播流。 */
+export interface GeneratedLiveStreamUrls extends LiveUrls {
+    streamId: number;
+    streamCode: string;
+    title?: string | null;
+    isDefault: boolean;
+}
+
+/** 后端按一个配置为房间内全部启用流生成的完整 URL 集合。 */
+export interface GeneratedLiveRoomUrls {
+    roomId: number;
+    liveConfigId: number;
+    appName: string;
+    pushDomain: string;
+    playDomain: string;
+    expireAtEpochSeconds: number;
+    streams: GeneratedLiveStreamUrls[];
+}
+
+/** 延期的运行信息接口响应，供 Push 页面恢复和 Play 页面读取活动链路。 */
+export interface LiveRoomRuntime extends GeneratedLiveRoomUrls {
+    activeStreamId: number | null;
+    createdAtEpochSeconds?: number;
+}

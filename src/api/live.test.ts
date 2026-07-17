@@ -86,4 +86,48 @@ describe('liveApi', () => {
         expect(fetchMock.mock.calls[0][0]).toBe('/admin/api/departments');
         expect(fetchMock.mock.calls[1][0]).toBe('/admin/api/diseases?deptId=3');
     });
+
+    it('lists safe live configs and generates every room stream URL with one config', async () => {
+        vi.spyOn(sessionStore, 'accessToken', 'get').mockReturnValue('admin-token');
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(new Response(JSON.stringify([{ id: 1, name: '默认配置' }]), {
+                status: 200, headers: { 'Content-Type': 'application/json' },
+            }))
+            .mockResolvedValueOnce(new Response(JSON.stringify({ roomId: 5, streams: [] }), {
+                status: 200, headers: { 'Content-Type': 'application/json' },
+            }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        await liveApi.liveConfigs();
+        await liveApi.generateRoomUrls(5, { liveConfigId: 1 });
+
+        expect(fetchMock.mock.calls[0][0]).toBe('/admin/api/tencent-live/configs');
+        expect(fetchMock.mock.calls[1][0]).toBe('/admin/api/live-rooms/5/live-urls');
+        expect(fetchMock.mock.calls[1][1]).toEqual(expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify({ liveConfigId: 1 }),
+        }));
+    });
+
+    it('uses the reserved runtime endpoints without hiding their response', async () => {
+        vi.spyOn(sessionStore, 'accessToken', 'get').mockReturnValue('admin-token');
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(new Response(JSON.stringify({ roomId: 5, activeStreamId: null, streams: [] }), {
+                status: 200, headers: { 'Content-Type': 'application/json' },
+            }))
+            .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), {
+                status: 200, headers: { 'Content-Type': 'application/json' },
+            }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        await liveApi.liveRuntime(5);
+        await liveApi.setActiveStream(5, 9);
+
+        expect(fetchMock.mock.calls[0][0]).toBe('/admin/api/live-rooms/5/live-runtime');
+        expect(fetchMock.mock.calls[1][0]).toBe('/admin/api/live-rooms/5/active-stream');
+        expect(fetchMock.mock.calls[1][1]).toEqual(expect.objectContaining({
+            method: 'PUT',
+            body: JSON.stringify({ streamId: 9 }),
+        }));
+    });
 });

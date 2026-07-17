@@ -6,16 +6,53 @@ import './components/admin-sidebar';
 import './pages/login-page';
 import './pages/access-management-page';
 import './pages/live-management-page';
+import './pages/live-play-page';
+import './pages/live-push-page';
+import './pages/live-watch-page';
 import './pages/placeholder-page';
 import './pages/tencent-live-page';
 import './pages/user-management-page';
 import './pages/welcome-page';
-import { matchRoute, navigate, routePathFromHash } from './router/routes';
+import { matchRoute, navigate, routePathFromHash, routeRoomIdFromHash } from './router/routes';
+import type { AppRoute } from './router/routes';
 import type { AdminHeader } from './components/admin-header';
 import type { AdminSidebar } from './components/admin-sidebar';
 import type { PlaceholderPage } from './pages/placeholder-page';
 import type { WelcomePage } from './pages/welcome-page';
 import type { AccessManagementPage, AccessPageKind } from './pages/access-management-page';
+import type { AdminSession } from './types';
+
+/** 对直接 Hash 访问执行与导航菜单一致的直播权限校验。 */
+export function canAccessRoute(
+    kind: AppRoute['kind'],
+    admin: Pick<AdminSession, 'roles' | 'permissions'>,
+): boolean {
+    if (admin.roles.includes('SUPER_ADMIN')) return true;
+    if (['liveRooms', 'liveWatch', 'livePlay'].includes(kind)) {
+        return admin.permissions.includes('LIVE_VIEW');
+    }
+    if (kind === 'livePush') {
+        return admin.permissions.includes('TENCENT_LIVE_MANAGE');
+    }
+    return true;
+}
+
+/** 把路由类型映射到具体页面标签，避免根组件内形成难读的条件表达式。 */
+export function pageTagForRouteKind(kind: AppRoute['kind']): string {
+    switch (kind) {
+        case 'welcome': return '<welcome-page></welcome-page>';
+        case 'users': return '<user-management-page></user-management-page>';
+        case 'liveRooms': return '<live-management-page></live-management-page>';
+        case 'liveWatch': return '<live-watch-page></live-watch-page>';
+        case 'livePush': return '<live-push-page></live-push-page>';
+        case 'livePlay': return '<live-play-page></live-play-page>';
+        case 'tencentLive': return '<tencent-live-page></tencent-live-page>';
+        case 'admins':
+        case 'roles':
+        case 'permissions': return '<access-management-page></access-management-page>';
+        default: return '<placeholder-page></placeholder-page>';
+    }
+}
 
 /**
  * 管理端根组件，负责会话恢复、访问保护、应用框架和页面切换。
@@ -83,17 +120,10 @@ export class AdminApp extends HTMLElement {
             window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}#/`);
         }
         const route = matchRoute(currentPath === '/login' ? '/' : currentPath);
-        const content = route.kind === 'welcome'
-            ? '<welcome-page></welcome-page>'
-            : route.kind === 'users'
-                ? '<user-management-page></user-management-page>'
-                : route.kind === 'liveRooms'
-                    ? '<live-management-page></live-management-page>'
-                    : route.kind === 'tencentLive'
-                        ? '<tencent-live-page></tencent-live-page>'
-                        : ['admins', 'roles', 'permissions'].includes(route.kind)
-                            ? '<access-management-page></access-management-page>'
-                            : '<placeholder-page></placeholder-page>';
+        const canAccess = canAccessRoute(route.kind, admin);
+        const content = canAccess
+            ? pageTagForRouteKind(route.kind)
+            : '<section class="placeholder-page access-denied"><div class="placeholder-icon">!</div><h2>无权访问</h2><p>当前管理员没有访问此直播功能的权限。</p></section>';
         this.innerHTML = `
             <div class="admin-layout ${this.sidebarCollapsed ? 'is-collapsed' : ''} ${this.mobileSidebarOpen ? 'mobile-open' : ''}">
                 <admin-sidebar></admin-sidebar>
@@ -111,6 +141,13 @@ export class AdminApp extends HTMLElement {
         if (accessPage) void accessPage.update(route.kind as AccessPageKind);
         const livePage = this.querySelector<import('./pages/live-management-page').LiveManagementPage>('live-management-page');
         if (livePage) void livePage.update();
+        const watchPage = this.querySelector<import('./pages/live-watch-page').LiveWatchPage>('live-watch-page');
+        if (watchPage) void watchPage.update();
+        const roomId = routeRoomIdFromHash(window.location.hash);
+        const pushPage = this.querySelector<import('./pages/live-push-page').LivePushPage>('live-push-page');
+        if (pushPage && roomId) void pushPage.update(roomId);
+        const playPage = this.querySelector<import('./pages/live-play-page').LivePlayPage>('live-play-page');
+        if (playPage && roomId) void playPage.update(roomId);
         this.querySelector('.sidebar-backdrop')?.addEventListener('click', this.closeMobileSidebar);
     };
 

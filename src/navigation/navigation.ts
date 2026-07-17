@@ -31,6 +31,7 @@ const navigation: NavigationGroup[] = [
         label: '直播运营',
         items: [
             { label: '直播间管理', path: '/live/rooms', icon: 'video', permission: 'LIVE_VIEW' },
+            { label: '观看直播', path: '/live/watch', icon: 'video', permission: 'LIVE_VIEW' },
             { label: '腾讯云直播', path: '/live/tencent', icon: 'cloud', permission: 'TENCENT_LIVE_VIEW' },
         ],
     },

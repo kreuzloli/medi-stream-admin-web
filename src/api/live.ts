@@ -7,8 +7,11 @@ import type {
     FileObject,
     LiveRoom,
     LiveRoomDetail,
+    GeneratedLiveRoomUrls,
+    LiveRoomRuntime,
     LiveUrls,
     PageResponse,
+    TencentLiveConfigOption,
 } from '../types';
 import { ApiError, requestJson } from './http';
 
@@ -74,6 +77,12 @@ export interface LiveStateQuery {
     StreamName: string;
 }
 
+export interface GenerateLiveRoomUrlsInput {
+    liveConfigId: number;
+    ttlSeconds?: number;
+    transcodeTemplate?: string;
+}
+
 export const liveApi = {
     rooms(values: Record<string, QueryValue>): Promise<PageResponse<LiveRoom>> {
         return request(`/live-rooms${queryString(values)}`);
@@ -117,6 +126,33 @@ export const liveApi = {
     /** 按科室加载疾病名称，避免跨科室选择错误。 */
     diseases(departmentId: number): Promise<Disease[]> {
         return request(`/diseases${queryString({ deptId: departmentId })}`);
+    },
+    liveConfigs(): Promise<TencentLiveConfigOption[]> {
+        return request('/tencent-live/configs');
+    },
+    /** 使用一个配置为房间内全部启用流生成 URL。 */
+    generateRoomUrls(roomId: number, input: GenerateLiveRoomUrlsInput): Promise<GeneratedLiveRoomUrls> {
+        return request(`/live-rooms/${roomId}/live-urls`, {
+            method: 'POST',
+            body: JSON.stringify(input),
+        });
+    },
+    /** 延期接口：读取房间缓存和主播实际选择的活动链路。 */
+    liveRuntime(roomId: number): Promise<LiveRoomRuntime> {
+        return request(`/live-rooms/${roomId}/live-runtime`);
+    },
+    /** 延期接口：推流成功后记录活动链路，停止时传 null 清除。 */
+    setActiveStream(roomId: number, streamId: number | null): Promise<{ ok: boolean }> {
+        return request(`/live-rooms/${roomId}/active-stream`, {
+            method: 'PUT',
+            body: JSON.stringify({ streamId }),
+        });
+    },
+    roomStreamState(roomId: number, streamId?: number): Promise<{ Response: unknown }> {
+        return request(`/live-rooms/${roomId}/stream-state`, {
+            method: 'POST',
+            body: JSON.stringify({ streamId }),
+        });
     },
     generateUrls(values: LiveUrlQuery): Promise<LiveUrls> {
         return request(`/tencent-live/urls${queryString({ ...values })}`);
