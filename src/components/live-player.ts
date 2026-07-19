@@ -16,8 +16,6 @@ type TCPlayerInstance = {
 
 type TCPlayerFactory = (id: string, options: {
     licenseUrl: string;
-    width: string;
-    height: string;
     controls: boolean;
     autoplay: boolean;
     muted: boolean;
@@ -94,6 +92,7 @@ export class LivePlayerComponent extends HTMLElement {
         }
     }
 
+    /** 加载 SDK 并创建播放器；响应式尺寸统一由页面 CSS 控制。 */
     private async createPlayer(): Promise<boolean> {
         try {
             await LivePlayerComponent.loadScript();
@@ -105,10 +104,9 @@ export class LivePlayerComponent extends HTMLElement {
             return false;
         }
         if (!window.TCPlayer || !this.isConnected) return false;
+        // TCPlayer 会把 "100%" 解析为 100px，因此不向 SDK 传百分比宽高。
         this.player = window.TCPlayer(this.playerId, {
             licenseUrl: '/api/live/license',
-            width: '100%',
-            height: '100%',
             controls: true,
             autoplay: false,
             muted: false,

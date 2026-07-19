@@ -104,7 +104,7 @@ describe('live-push-page', () => {
         expect(page.querySelector<HTMLButtonElement>('[data-start-push]')?.disabled).toBe(true);
     });
 
-    it('starts the default stream and keeps pushing when active stream sync is not deployed', async () => {
+    it('stops pushing when active stream synchronization fails', async () => {
         vi.spyOn(liveApi, 'liveRuntime').mockRejectedValue(new ApiError(404, 'Not Found'));
         vi.spyOn(liveApi, 'room').mockResolvedValue({
             id: 5, roomCode: 'LR5', title: '手术直播', isTop: 0, status: 1, streams: [],
@@ -116,8 +116,9 @@ describe('live-push-page', () => {
         vi.spyOn(liveApi, 'generateRoomUrls').mockResolvedValue(generatedUrls);
         vi.spyOn(liveApi, 'setActiveStream').mockRejectedValue(new ApiError(404, 'Not Found'));
         vi.spyOn(LivePusherComponent.prototype, 'startPush').mockResolvedValue(true);
-        const info = vi.spyOn(logger, 'info');
-        const warn = vi.spyOn(logger, 'warn');
+        const stopPush = vi.spyOn(LivePusherComponent.prototype, 'stopPush');
+        vi.spyOn(logger, 'info');
+        vi.spyOn(logger, 'warn');
         const page = document.createElement('live-push-page') as LivePushPage;
         document.body.append(page);
         await page.update(5);
@@ -132,16 +133,10 @@ describe('live-push-page', () => {
         await vi.waitFor(() => expect(LivePusherComponent.prototype.startPush).toHaveBeenCalledWith(
             'webrtc://push.example.com/live/main',
         ));
-        await vi.waitFor(() => expect(page.textContent).toContain('活动链路同步接口待接入'));
-        expect(info).toHaveBeenCalledWith('administrator live push started', { roomId: 5, streamId: 12 });
-        expect(page.querySelector<HTMLSelectElement>('[name="liveConfigId"]')?.disabled).toBe(true);
-        expect(page.querySelectorAll<HTMLInputElement>('[name="streamId"]:disabled')).toHaveLength(2);
-
-        page.remove();
-        await vi.waitFor(() => expect(warn).toHaveBeenCalledWith(
-            'active live stream cleanup failed',
-            expect.objectContaining({ roomId: 5, errorType: 'ApiError' }),
-        ));
+        await vi.waitFor(() => expect(page.textContent).toContain('活动链路同步失败，推流已停止'));
+        expect(stopPush).toHaveBeenCalled();
+        expect(page.querySelector<HTMLSelectElement>('[name="liveConfigId"]')?.disabled).toBe(false);
+        expect(page.querySelectorAll<HTMLInputElement>('[name="streamId"]:disabled')).toHaveLength(0);
     });
 
     it('restores generated URLs and the active stream when runtime data is available', async () => {
@@ -152,7 +147,10 @@ describe('live-push-page', () => {
             id: 1, name: '默认配置', appName: 'medi-stream', pushDomain: 'push.example.com',
             playDomain: 'live.example.com', defaultTtlSeconds: 86400,
         }]);
-        vi.spyOn(liveApi, 'liveRuntime').mockResolvedValue({ ...generatedUrls, activeStreamId: 11 });
+        vi.spyOn(liveApi, 'liveRuntime').mockResolvedValue({
+            ...generatedUrls, activeStreamId: 11, streamState: 'active', isLive: true,
+        });
+        const startPush = vi.spyOn(LivePusherComponent.prototype, 'startPush');
         const page = document.createElement('live-push-page') as LivePushPage;
         document.body.append(page);
 
@@ -160,6 +158,42 @@ describe('live-push-page', () => {
 
         expect(page.textContent).toContain('webrtc://push.example.com/live/main');
         expect(page.querySelector<HTMLInputElement>('[name="streamId"]:checked')?.value).toBe('11');
+        expect(startPush).not.toHaveBeenCalled();
+    });
+
+    it('reports a server cleanup failure after local pushing has stopped', async () => {
+        vi.spyOn(liveApi, 'liveRuntime').mockRejectedValue(new ApiError(404, 'Not Found'));
+        vi.spyOn(liveApi, 'room').mockResolvedValue({
+            id: 5, roomCode: 'LR5', title: '手术直播', isTop: 0, status: 1, streams: [],
+        });
+        vi.spyOn(liveApi, 'liveConfigs').mockResolvedValue([{
+            id: 1, name: '默认配置', appName: 'medi-stream', pushDomain: 'push.example.com',
+            playDomain: 'live.example.com', defaultTtlSeconds: 86400,
+        }]);
+        vi.spyOn(liveApi, 'generateRoomUrls').mockResolvedValue(generatedUrls);
+        const setActiveStream = vi.spyOn(liveApi, 'setActiveStream')
+            .mockResolvedValueOnce({ roomId: 5, activeStreamId: 12 })
+            .mockRejectedValueOnce(new ApiError(500, 'Redis异常'));
+        vi.spyOn(LivePusherComponent.prototype, 'startPush').mockResolvedValue(true);
+        vi.spyOn(LivePusherComponent.prototype, 'stopPush');
+        vi.spyOn(logger, 'info');
+        vi.spyOn(logger, 'warn');
+        const page = document.createElement('live-push-page') as LivePushPage;
+        document.body.append(page);
+        await page.update(5);
+        page.querySelector<HTMLSelectElement>('[name="liveConfigId"]')!.value = '1';
+        page.querySelector<HTMLFormElement>('[data-generate-form]')!.dispatchEvent(
+            new Event('submit', { bubbles: true, cancelable: true }),
+        );
+        await vi.waitFor(() => expect(page.querySelector('[data-start-push]')).not.toBeNull());
+        page.querySelector<HTMLButtonElement>('[data-start-push]')!.click();
+        await vi.waitFor(() => expect(page.textContent).toContain('正在推送：主机位'));
+
+        page.querySelector<HTMLButtonElement>('[data-stop-push]')!.click();
+
+        await vi.waitFor(() => expect(page.textContent).toContain('活动链路清理失败：Redis异常'));
+        expect(setActiveStream).toHaveBeenNthCalledWith(1, 5, 12);
+        expect(setActiveStream).toHaveBeenNthCalledWith(2, 5, null);
     });
 
     it('offers a retry when room or config loading fails', async () => {

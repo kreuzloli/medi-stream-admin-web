@@ -171,8 +171,16 @@ export interface GeneratedLiveRoomUrls {
     streams: GeneratedLiveStreamUrls[];
 }
 
-/** 延期的运行信息接口响应，供 Push 页面恢复和 Play 页面读取活动链路。 */
+/** 已部署的运行信息响应；isLive 是后端结合活动链路和腾讯云状态得出的最终结果。 */
 export interface LiveRoomRuntime extends GeneratedLiveRoomUrls {
     activeStreamId: number | null;
     createdAtEpochSeconds?: number;
+    streamState: string | null;
+    isLive: boolean;
+}
+
+/** 设置或清除活动链路后的服务端确认结果。 */
+export interface SetActiveStreamResponse {
+    roomId: number;
+    activeStreamId: number | null;
 }

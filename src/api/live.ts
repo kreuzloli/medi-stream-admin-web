@@ -11,6 +11,7 @@ import type {
     LiveRoomRuntime,
     LiveUrls,
     PageResponse,
+    SetActiveStreamResponse,
     TencentLiveConfigOption,
 } from '../types';
 import { ApiError, requestJson } from './http';
@@ -137,12 +138,12 @@ export const liveApi = {
             body: JSON.stringify(input),
         });
     },
-    /** 延期接口：读取房间缓存和主播实际选择的活动链路。 */
+    /** 读取运行时 URL、主播活动链路和后端聚合后的腾讯云直播状态。 */
     liveRuntime(roomId: number): Promise<LiveRoomRuntime> {
         return request(`/live-rooms/${roomId}/live-runtime`);
     },
-    /** 延期接口：推流成功后记录活动链路，停止时传 null 清除。 */
-    setActiveStream(roomId: number, streamId: number | null): Promise<{ ok: boolean }> {
+    /** 推流成功后记录活动链路，停止时传 null 清除。 */
+    setActiveStream(roomId: number, streamId: number | null): Promise<SetActiveStreamResponse> {
         return request(`/live-rooms/${roomId}/active-stream`, {
             method: 'PUT',
             body: JSON.stringify({ streamId }),

@@ -27,6 +27,7 @@ export class LivePushPage extends HTMLElement {
         this.render();
     }
 
+    /** 页面离开时尽力清除服务端活动链路，避免观看端继续显示已经结束的直播。 */
     disconnectedCallback(): void {
         if (this.pushing && this.roomId) {
             const roomId = this.roomId;
@@ -63,6 +64,11 @@ export class LivePushPage extends HTMLElement {
                     ?? runtime.streams.find((stream) => stream.isDefault)?.streamId
                     ?? runtime.streams[0]?.streamId
                     ?? null;
+                logger.info('live room runtime restored', {
+                    roomId,
+                    activeStreamId: runtime.activeStreamId,
+                    streamCount: runtime.streams.length,
+                });
                 this.notice = '已恢复直播间上次生成的运行信息';
             }
         } catch (error) {
@@ -249,20 +255,24 @@ export class LivePushPage extends HTMLElement {
         if (!started) return;
         this.pushing = true;
         this.syncControls();
-        logger.info('administrator live push started', { roomId: this.roomId, streamId: stream.streamId });
         try {
             await liveApi.setActiveStream(this.roomId, stream.streamId);
+            logger.info('administrator live push started', { roomId: this.roomId, streamId: stream.streamId });
             this.setNotice(`正在推送：${stream.title || stream.streamName}`);
         } catch (error) {
-            if (error instanceof ApiError && error.status === 404) {
-                this.setNotice('推流已开始；活动链路同步接口待接入');
-                return;
-            }
-            this.setNotice(`推流已开始；活动链路同步失败：${errorMessage(error)}`);
+            this.pusher()?.stopPush();
+            this.pushing = false;
+            this.syncControls();
+            logger.warn('active live stream synchronization failed; local push stopped', {
+                roomId: this.roomId,
+                streamId: stream.streamId,
+                errorType: error instanceof Error ? error.name : typeof error,
+            });
+            this.setNotice(`活动链路同步失败，推流已停止：${errorMessage(error)}`);
         }
     }
 
-    /** 停止 SDK 推流后尽力清除服务端活动链路，不因延期接口阻断本地停止。 */
+    /** 停止 SDK 推流后清除服务端活动链路，并明确提示清理失败。 */
     private async stopPush(): Promise<void> {
         if (!this.roomId) return;
         const streamId = this.selectedStreamId;
@@ -274,9 +284,12 @@ export class LivePushPage extends HTMLElement {
             await liveApi.setActiveStream(this.roomId, null);
             this.setNotice('推流已停止');
         } catch (error) {
-            this.setNotice(error instanceof ApiError && error.status === 404
-                ? '推流已停止；活动链路同步接口待接入'
-                : `推流已停止；活动链路清理失败：${errorMessage(error)}`);
+            logger.warn('active live stream cleanup failed after local push stopped', {
+                roomId: this.roomId,
+                streamId,
+                errorType: error instanceof Error ? error.name : typeof error,
+            });
+            this.setNotice(`推流已停止；活动链路清理失败：${errorMessage(error)}`);
         }
     }
 

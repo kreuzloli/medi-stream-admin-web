@@ -165,6 +165,10 @@ tbody tr:hover { background: #fbfdff; }
 .primary-cell { display: grid; gap: 4px; min-width: 110px; }
 .primary-cell strong { color: #172f4c; font-size: 13px; }
 .primary-cell small { color: #8191a4; font-size: 11px; }
+.live-room-list-identity { min-width: 190px; display: flex; align-items: center; gap: 11px; }
+.live-room-list-cover { width: 72px; height: 42px; flex: 0 0 auto; overflow: hidden; display: grid; place-items: center; border: 1px solid #dce5ef; border-radius: 7px; background: #eef3f8; }
+.live-room-list-cover img { width: 100%; height: 100%; object-fit: cover; }
+.live-room-cover-placeholder { color: #71859b; font-size: 11px; font-weight: 650; letter-spacing: 1px; }
 td code { padding: 4px 7px; border-radius: 5px; color: #0755a8; background: #edf5ff; font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px; }
 .status-badge { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 12px; }
 .status-badge i { width: 7px; height: 7px; border-radius: 50%; }
@@ -283,7 +287,10 @@ td code { padding: 4px 7px; border-radius: 5px; color: #0755a8; background: #edf
 .wide-button { width: 100%; }
 .console-muted { margin: 0; padding: 19px; color: #8595a7; font-size: 12px; }
 .preview-card { padding: 12px; background: #061526; border-color: #16334e; }
+/* 自定义元素及 TCPlayer 动态根节点都必须占满 16:9 播放区域。 */
+live-player { display: block; }
 .live-pusher-preview, .live-player-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 9px; background: radial-gradient(circle at 18% 5%, #174b6d, transparent 35%), #020912; }
+.live-player-frame > .video-js { width: 100%; height: 100%; }
 .live-pusher-preview > span { position: absolute; left: 14px; top: 13px; z-index: 1; padding: 5px 9px; border-radius: 999px; color: #d9e9f7; background: #020a1399; font-size: 10px; }
 .live-player-frame video { width: 100%; height: 100%; display: block; background: #000; }
 .pusher-control-bar { display: grid; grid-template-columns: minmax(150px, .7fr) minmax(130px, .6fr) minmax(280px, 1.7fr); align-items: end; gap: 12px; padding: 15px 2px 1px; color: #b9cbdb; }

@@ -109,19 +109,21 @@ describe('liveApi', () => {
         }));
     });
 
-    it('uses the reserved runtime endpoints without hiding their response', async () => {
+    it('uses the deployed runtime endpoints without hiding their response', async () => {
         vi.spyOn(sessionStore, 'accessToken', 'get').mockReturnValue('admin-token');
+        const runtime = { roomId: 5, activeStreamId: 9, streams: [], streamState: 'active', isLive: true };
+        const activeStream = { roomId: 5, activeStreamId: 9 };
         const fetchMock = vi.fn()
-            .mockResolvedValueOnce(new Response(JSON.stringify({ roomId: 5, activeStreamId: null, streams: [] }), {
+            .mockResolvedValueOnce(new Response(JSON.stringify(runtime), {
                 status: 200, headers: { 'Content-Type': 'application/json' },
             }))
-            .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), {
+            .mockResolvedValueOnce(new Response(JSON.stringify(activeStream), {
                 status: 200, headers: { 'Content-Type': 'application/json' },
             }));
         vi.stubGlobal('fetch', fetchMock);
 
-        await liveApi.liveRuntime(5);
-        await liveApi.setActiveStream(5, 9);
+        await expect(liveApi.liveRuntime(5)).resolves.toEqual(runtime);
+        await expect(liveApi.setActiveStream(5, 9)).resolves.toEqual(activeStream);
 
         expect(fetchMock.mock.calls[0][0]).toBe('/admin/api/live-rooms/5/live-runtime');
         expect(fetchMock.mock.calls[1][0]).toBe('/admin/api/live-rooms/5/active-stream');

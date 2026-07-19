@@ -27,6 +27,10 @@ describe('live-player', () => {
             licenseUrl: '/api/live/license',
             controls: true,
         }));
+        expect(window.TCPlayer).toHaveBeenCalledWith(expect.any(String), expect.not.objectContaining({
+            width: expect.anything(),
+            height: expect.anything(),
+        }));
         expect(player.src).toHaveBeenCalledWith([
             { src: 'webrtc://live.example.com/live/main', type: 'webrtc' },
             { src: 'https://live.example.com/live/main.flv', type: 'video/x-flv' },

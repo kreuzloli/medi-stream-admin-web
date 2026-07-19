@@ -29,8 +29,11 @@ Medi Stream 管理后台前端，使用 Vite、TypeScript 和原生 Web Componen
 - 角色增删改查、状态和权限分配
 - 权限定义增删改查和状态管理
 - 直播间分页查询、筛选、创建、编辑、删除、置顶、状态和房主管理
-- 直播间封面上传及多路直播流维护
-- 腾讯云推流/播放地址生成和直播流状态查询
+- 直播间封面上传、列表封面缩略图及多路直播流维护
+- 开播控制台配置选择、全部链路地址生成、复制和默认流优先选择
+- 摄像头、麦克风或屏幕采集预览，以及活动链路同步后的管理员推流
+- 观看列表、实际直播状态展示和管理员播放页
+- 二维码和聊天室预留区域，等待后续接口接入
 - 未开发模块的统一占位页
 - 统一 API 错误处理和关键状态日志
 - `/admin/` 子路径构建与部署
@@ -48,6 +51,7 @@ Medi Stream 管理后台前端，使用 Vite、TypeScript 和原生 Web Componen
 └── 内容目录
 直播运营
 ├── 直播间管理
+├── 观看直播
 └── 腾讯云直播
 权限管理
 ├── 管理员
@@ -119,6 +123,9 @@ http://127.0.0.1:8081/auth/login
 | 权限定义管理 | `/admin/api/permissions`、`/admin/api/permissions/:id/status` |
 | 文件上传与查询 | `POST /admin/api/files/upload`、`GET /admin/api/files/:id` |
 | 直播间与直播流 | `/admin/api/live-rooms`、`/admin/api/live-rooms/:id/*` |
+| 生成房间全部链路地址 | `POST /admin/api/live-rooms/:id/live-urls` |
+| 设置或清除活动链路 | `PUT /admin/api/live-rooms/:id/active-stream` |
+| 查询房间实际运行状态 | `GET /admin/api/live-rooms/:id/live-runtime` |
 | 腾讯云直播工具 | `GET /admin/api/tencent-live/urls`、`POST /admin/api/tencent-live/stream-state` |
 
 登录成功后，后续请求使用：
@@ -128,6 +135,28 @@ Authorization: Bearer <token>
 ```
 
 项目不会在日志中输出密码、Token 或完整请求体。
+
+## 开播与观看流程
+
+```text
+选择直播间并进入开播控制台
+        ↓
+选择安全配置并生成全部启用链路地址
+        ↓
+默认选择默认流，也可在推流前切换链路
+        ↓
+SDK 推流成功后同步活动链路
+        ↓
+观看列表和播放页读取 live-runtime
+        ↓
+仅在 isLive=true 时播放当前活动链路
+```
+
+停止推流或离开开播页面时，前端会清除服务端活动链路。播放页会周期检查运行时状态，活动链路被清除、切换或停止直播后立即释放播放器。
+
+推流页和播放页已经预留二维码、聊天室区域；二维码生成地址以及 HTTPS + Server-Sent Events 聊天接口尚未接入。
+
+前端日志只记录房间 ID、直播流 ID、HTTP 状态或错误类型，不记录配置密钥、Token、完整推拉流地址、签名参数或生产域名。
 
 ## 路由
 
@@ -181,9 +210,9 @@ src/
 ├── api/          # HTTP 客户端、认证和管理接口
 ├── auth/         # Token 与当前管理员会话
 ├── common/       # 通用日志等基础能力
-├── components/   # 侧边栏和顶栏 Web Components
+├── components/   # 侧边栏、顶栏、直播推流与播放 Web Components
 ├── navigation/   # 菜单定义与权限过滤
-├── pages/        # 登录、欢迎、用户、RBAC 和占位页面
+├── pages/        # 登录、欢迎、用户、RBAC、直播管理、推流和观看页面
 ├── router/       # Hash 路由与页面匹配
 ├── styles/       # 全局设计令牌和响应式样式
 ├── ui/           # SVG 图标和品牌标记

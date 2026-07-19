@@ -21,9 +21,8 @@ import {
     loadingRows,
     openDialog,
 } from './management-shared';
-import { isTencentStreamActive } from './live-runtime';
 
-type LiveRuntimeStatus = 'pending' | 'loading' | 'live' | 'offline' | 'error';
+type LiveRuntimeStatus = 'loading' | 'live' | 'offline' | 'error';
 
 /** 把可选数字字段转换为 API 使用的 undefined，避免把空输入提交为 0。 */
 function optionalNumber(value: string): number | undefined {
@@ -69,6 +68,7 @@ export class LiveManagementPage extends HTMLElement {
     private runtimeStatuses = new Map<number, LiveRuntimeStatus>();
     private departmentNames = new Map<number, string>();
     private diseaseNames = new Map<number, string>();
+    private coverFiles = new Map<number, FileObject>();
     private catalogLoadFailed = false;
 
     async update(): Promise<void> {
@@ -85,7 +85,7 @@ export class LiveManagementPage extends HTMLElement {
             this.rooms = result.records;
             this.total = result.total;
             this.rooms.forEach((room) => this.runtimeStatuses.set(room.id, 'loading'));
-            await Promise.all([this.queryLiveStatuses(), this.loadCatalogNames()]);
+            await Promise.all([this.queryLiveStatuses(), this.loadCatalogNames(), this.loadCoverFiles()]);
         } catch (error) {
             this.error = errorMessage(error);
         } finally {
@@ -100,11 +100,11 @@ export class LiveManagementPage extends HTMLElement {
         const canPush = sessionStore.can('TENCENT_LIVE_MANAGE');
         const rows = this.loading ? loadingRows(9) : this.rooms.length === 0 ? emptyRows(9, '暂无直播间')
             : this.rooms.map((room) => `<tr>
-                <td><div class="primary-cell"><strong>${escapeHtml(room.title)}</strong><small>${escapeHtml(room.roomCode)}</small></div></td>
+                <td>${this.roomIdentity(room)}</td>
                 <td>${room.ownerAdminId ? `管理员 #${room.ownerAdminId}` : `用户 #${room.ownerUserId ?? '—'}`}</td>
                 <td>${this.catalogLabel(room)}</td>
                 <td>${room.isTop === 1 ? '<span class="status-badge enabled"><i></i>已置顶</span>' : '普通'}</td>
-                <td>${roomStatusBadge(room.status)}</td><td>${this.runtimeStatusBadge(this.runtimeStatuses.get(room.id) ?? 'pending')}</td><td>${formatDate(room.startTime)}</td><td>${formatDate(room.updatedAt)}</td>
+                <td>${roomStatusBadge(room.status)}</td><td>${this.runtimeStatusBadge(this.runtimeStatuses.get(room.id) ?? 'offline')}</td><td>${formatDate(room.startTime)}</td><td>${formatDate(room.updatedAt)}</td>
                 <td class="row-actions">
                     ${canPush ? `<button class="primary-action" data-action="push" data-id="${room.id}">开播</button>` : ''}
                     <button data-action="watch" data-id="${room.id}">观看</button>
@@ -166,24 +166,16 @@ export class LiveManagementPage extends HTMLElement {
         }));
     }
 
-    /** 使用运行信息中的活动链路查询真实腾讯云状态；延期接口 404 保持“待接入”。 */
+    /** 直接使用运行信息聚合的腾讯云状态；无运行时缓存视为未开播。 */
     private async queryLiveStatuses(): Promise<void> {
         await Promise.all(this.rooms.map(async (room) => {
             try {
                 const runtime = await liveApi.liveRuntime(room.id);
-                if (!runtime.activeStreamId) {
-                    this.runtimeStatuses.set(room.id, 'offline');
-                    return;
-                }
-                const result = await liveApi.roomStreamState(room.id, runtime.activeStreamId);
-                this.runtimeStatuses.set(
-                    room.id,
-                    isTencentStreamActive(result.Response) ? 'live' : 'offline',
-                );
+                this.runtimeStatuses.set(room.id, runtime.isLive ? 'live' : 'offline');
             } catch (error) {
                 this.runtimeStatuses.set(
                     room.id,
-                    error instanceof ApiError && error.status === 404 ? 'pending' : 'error',
+                    error instanceof ApiError && error.status === 404 ? 'offline' : 'error',
                 );
             }
         }));
@@ -201,7 +193,31 @@ export class LiveManagementPage extends HTMLElement {
         if (status === 'offline') return '<span class="status-badge disabled"><i></i>未开播</span>';
         if (status === 'loading') return '<span class="status-badge pending"><i></i>查询中</span>';
         if (status === 'error') return '<span class="status-badge banned"><i></i>查询失败</span>';
-        return '<span class="status-badge pending"><i></i>待接入</span>';
+        return '<span class="status-badge disabled"><i></i>未开播</span>';
+    }
+
+    /** 只读取当前页唯一的封面文件，单张文件失败时保留列表和占位图。 */
+    private async loadCoverFiles(): Promise<void> {
+        this.coverFiles.clear();
+        const coverFileIds = [...new Set(this.rooms
+            .map((room) => room.coverFileId)
+            .filter((id): id is number => id !== null && id !== undefined))];
+        await Promise.all(coverFileIds.map(async (id) => {
+            try {
+                this.coverFiles.set(id, await liveApi.file(id));
+            } catch {
+                // 封面是列表补充信息，加载失败不能阻断直播间管理操作。
+            }
+        }));
+    }
+
+    /** 组合列表封面和直播间主次信息；无有效文件时显示稳定占位。 */
+    private roomIdentity(room: LiveRoom): string {
+        const cover = room.coverFileId ? this.coverFiles.get(room.coverFileId) : undefined;
+        const visual = cover
+            ? `<img src="${escapeHtml(cover.fileUrl)}" alt="${escapeHtml(room.title)}封面" loading="lazy" />`
+            : '<span class="live-room-cover-placeholder" aria-hidden="true">直播</span>';
+        return `<div class="live-room-list-identity"><span class="live-room-list-cover">${visual}</span><div class="primary-cell"><strong>${escapeHtml(room.title)}</strong><small>${escapeHtml(room.roomCode)}</small></div></div>`;
     }
 
     /** 为当前页涉及的目录建立名称映射，同一科室的疾病列表只读取一次。 */
@@ -247,17 +263,11 @@ export class LiveManagementPage extends HTMLElement {
         if (action === 'delete') await this.run(() => liveApi.deleteRoom(id), '直播间已删除');
     }
 
-    /** 观看前读取活动链路；延期接口未部署时给出准确提示。 */
+    /** 观看前使用后端聚合状态确认活动链路确实正在直播。 */
     private async openWatch(roomId: number): Promise<void> {
         try {
             const runtime = await liveApi.liveRuntime(roomId);
-            if (!runtime.activeStreamId) {
-                this.error = '当前直播间未开播';
-                this.render();
-                return;
-            }
-            const state = await liveApi.roomStreamState(roomId, runtime.activeStreamId);
-            if (!isTencentStreamActive(state.Response)) {
+            if (!runtime.activeStreamId || !runtime.isLive) {
                 this.error = '当前直播间未开播';
                 this.render();
                 return;
@@ -265,7 +275,7 @@ export class LiveManagementPage extends HTMLElement {
             navigate(`/live/play?roomId=${roomId}`);
         } catch (error) {
             this.error = error instanceof ApiError && error.status === 404
-                ? '直播运行信息接口暂未接入'
+                ? '当前直播间未开播'
                 : errorMessage(error);
             this.render();
         }

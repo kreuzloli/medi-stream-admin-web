@@ -5,9 +5,8 @@ import '../components/live-player';
 import type { LivePlayerComponent, LivePlayerSource } from '../components/live-player';
 import type { GeneratedLiveStreamUrls, LiveRoomDetail } from '../types';
 import { errorMessage, escapeHtml } from './management-shared';
-import { isTencentStreamActive } from './live-runtime';
 
-type PlayState = 'loading' | 'pending' | 'offline' | 'live' | 'error';
+type PlayState = 'loading' | 'offline' | 'live' | 'error';
 
 /** 管理员观看页，始终从运行信息接口重新确认实际活动链路。 */
 export class LivePlayPage extends HTMLElement {
@@ -26,6 +25,7 @@ export class LivePlayPage extends HTMLElement {
         this.stopStatusMonitor();
     }
 
+    /** 重新读取房间和运行时，只播放后端确认仍处于直播中的活动链路。 */
     async update(roomId: number): Promise<void> {
         this.stopStatusMonitor();
         this.roomId = roomId;
@@ -35,7 +35,7 @@ export class LivePlayPage extends HTMLElement {
         try {
             this.room = await liveApi.room(roomId);
             const runtime = await liveApi.liveRuntime(roomId);
-            if (!runtime.activeStreamId) {
+            if (!runtime.activeStreamId || !runtime.isLive) {
                 this.state = 'offline';
                 this.message = '当前直播间未开播';
                 this.render();
@@ -48,21 +48,14 @@ export class LivePlayPage extends HTMLElement {
                 this.render();
                 return;
             }
-            const result = await liveApi.roomStreamState(roomId, runtime.activeStreamId);
-            if (!isTencentStreamActive(result.Response)) {
-                this.state = 'offline';
-                this.message = '当前直播间未开播';
-                this.render();
-                return;
-            }
             this.state = 'live';
             this.message = '正在连接直播';
             this.render();
             await this.startPlayback();
             this.startStatusMonitor();
         } catch (error) {
-            this.state = error instanceof ApiError && error.status === 404 ? 'pending' : 'error';
-            this.message = this.state === 'pending' ? '直播运行信息接口暂未接入' : errorMessage(error);
+            this.state = error instanceof ApiError && error.status === 404 ? 'offline' : 'error';
+            this.message = this.state === 'offline' ? '当前直播间未开播' : errorMessage(error);
             this.render();
         }
     }
@@ -92,7 +85,7 @@ export class LivePlayPage extends HTMLElement {
             return `<live-player></live-player><div class="player-overlay-status"><span data-play-status>${escapeHtml(this.message)}</span><button type="button" data-play-again>开始播放</button></div>`;
         }
         const message = this.state === 'loading' ? '正在读取直播状态' : this.message || '当前直播间未开播';
-        return `<div class="player-empty-state"><span class="player-empty-icon">▶</span><strong>${escapeHtml(message)}</strong><p>${this.state === 'pending' ? '页面结构已完成，等待后端补充运行信息接口。' : '请稍后刷新或返回观看列表。'}</p></div>`;
+        return `<div class="player-empty-state"><span class="player-empty-icon">▶</span><strong>${escapeHtml(message)}</strong><p>请稍后刷新或返回观看列表。</p></div>`;
     }
 
     private renderStreamSummary(): string {
@@ -121,6 +114,12 @@ export class LivePlayPage extends HTMLElement {
         const player = this.player();
         if (!player || !this.activeStream) return;
         const started = await player.playSources(this.playSources(this.activeStream));
+        if (started) {
+            logger.info('administrator live playback started', {
+                roomId: this.roomId,
+                streamId: this.activeStream.streamId,
+            });
+        }
         const button = this.querySelector<HTMLButtonElement>('[data-play-again]');
         if (button) button.hidden = started;
     }
@@ -131,6 +130,7 @@ export class LivePlayPage extends HTMLElement {
         this.statusTimer = setInterval(() => void this.verifyStillLive(), 15_000);
     }
 
+    /** 清理唯一的状态定时器；允许在更新、停播和页面卸载时重复调用。 */
     private stopStatusMonitor(): void {
         if (this.statusTimer) clearInterval(this.statusTimer);
         this.statusTimer = null;
@@ -141,13 +141,14 @@ export class LivePlayPage extends HTMLElement {
         if (!this.roomId || !this.activeStream) return;
         try {
             const runtime = await liveApi.liveRuntime(this.roomId);
-            if (runtime.activeStreamId !== this.activeStream.streamId) {
+            if (runtime.activeStreamId !== this.activeStream.streamId || !runtime.isLive) {
+                this.finishPlayback();
+            }
+        } catch (error) {
+            if (error instanceof ApiError && error.status === 404) {
                 this.finishPlayback();
                 return;
             }
-            const result = await liveApi.roomStreamState(this.roomId, this.activeStream.streamId);
-            if (!isTencentStreamActive(result.Response)) this.finishPlayback();
-        } catch (error) {
             logger.warn('live playback status refresh failed', {
                 roomId: this.roomId,
                 streamId: this.activeStream.streamId,
@@ -156,7 +157,12 @@ export class LivePlayPage extends HTMLElement {
         }
     }
 
+    /** 释放播放器并切换为已结束状态，不保留失效活动链路。 */
     private finishPlayback(): void {
+        logger.info('administrator live playback finished', {
+            roomId: this.roomId,
+            streamId: this.activeStream?.streamId,
+        });
         this.stopStatusMonitor();
         this.player()?.destroy();
         this.activeStream = null;

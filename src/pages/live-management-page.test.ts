@@ -52,7 +52,36 @@ describe('live-management-page', () => {
         expect(page.querySelector('[data-action="edit"]')).not.toBeNull();
         expect(page.querySelector('[data-action="push"]')).not.toBeNull();
         expect(page.querySelector('[data-action="watch"]')).not.toBeNull();
-        expect(page.textContent).toContain('待接入');
+        expect(page.textContent).toContain('未开播');
+    });
+
+    it('renders list covers and requests a shared cover only once', async () => {
+        vi.spyOn(sessionStore, 'can').mockReturnValue(true);
+        vi.spyOn(liveApi, 'rooms').mockResolvedValue({
+            records: [
+                { id: 5, roomCode: 'LR5', title: '病例一', coverFileId: 12, isTop: 0, status: 1 },
+                { id: 6, roomCode: 'LR6', title: '病例二', coverFileId: 12, isTop: 0, status: 1 },
+                { id: 7, roomCode: 'LR7', title: '无封面', isTop: 0, status: 1 },
+            ],
+            total: 3, size: 20, current: 1, pages: 1,
+        });
+        const file = vi.spyOn(liveApi, 'file').mockResolvedValue({
+            id: 12,
+            fileName: 'cover.png',
+            fileUrl: '/uploads/cover.png',
+        });
+        const page = document.createElement('live-management-page') as LiveManagementPage;
+        document.body.append(page);
+
+        await page.update();
+
+        expect(file).toHaveBeenCalledTimes(1);
+        expect(file).toHaveBeenCalledWith(12);
+        expect(page.querySelectorAll<HTMLImageElement>('.live-room-list-cover img')).toHaveLength(2);
+        expect(page.querySelector<HTMLImageElement>('.live-room-list-cover img')?.src)
+            .toContain('/uploads/cover.png');
+        expect(page.querySelector<HTMLImageElement>('.live-room-list-cover img')?.alt).toBe('病例一封面');
+        expect(page.querySelectorAll('.live-room-cover-placeholder')).toHaveLength(1);
     });
 
     it('shows department and disease names in the room list without duplicate disease requests', async () => {
@@ -226,9 +255,9 @@ describe('live-management-page', () => {
         vi.mocked(liveApi.liveRuntime).mockResolvedValue({
             roomId: 5, liveConfigId: 1, activeStreamId: 12, appName: 'medi-stream',
             pushDomain: 'push.example.com', playDomain: 'live.example.com', expireAtEpochSeconds: 2_000_000_000,
-            streams: [],
+            streams: [], streamState: 'active', isLive: true,
         });
-        vi.spyOn(liveApi, 'roomStreamState').mockResolvedValue({ Response: { LiveStreamState: 'active' } });
+        const state = vi.spyOn(liveApi, 'roomStreamState');
         vi.spyOn(liveApi, 'rooms').mockResolvedValue({
             records: [{ id: 5, roomCode: 'LR5', title: '手术直播', isTop: 0, status: 1 }],
             total: 1, size: 20, current: 1, pages: 1,
@@ -239,7 +268,7 @@ describe('live-management-page', () => {
         await page.update();
 
         expect(page.textContent).toContain('直播中');
-        expect(liveApi.roomStreamState).toHaveBeenCalledWith(5, 12);
+        expect(state).not.toHaveBeenCalled();
         expect(page.querySelector('[data-refresh-live-status]')).not.toBeNull();
     });
 
@@ -248,9 +277,9 @@ describe('live-management-page', () => {
         vi.mocked(liveApi.liveRuntime).mockResolvedValue({
             roomId: 5, liveConfigId: 1, activeStreamId: 12, appName: 'medi-stream',
             pushDomain: 'push.example.com', playDomain: 'live.example.com', expireAtEpochSeconds: 2_000_000_000,
-            streams: [],
+            streams: [], streamState: 'inactive', isLive: false,
         });
-        vi.spyOn(liveApi, 'roomStreamState').mockResolvedValue({ Response: { LiveStreamState: 'inactive' } });
+        const state = vi.spyOn(liveApi, 'roomStreamState');
         vi.spyOn(liveApi, 'rooms').mockResolvedValue({
             records: [{ id: 5, roomCode: 'LR5', title: '手术直播', isTop: 0, status: 1 }],
             total: 1, size: 20, current: 1, pages: 1,
@@ -262,6 +291,7 @@ describe('live-management-page', () => {
         page.querySelector<HTMLButtonElement>('[data-action="watch"]')!.click();
 
         await vi.waitFor(() => expect(page.textContent).toContain('当前直播间未开播'));
+        expect(state).not.toHaveBeenCalled();
         expect(window.location.hash).not.toContain('/live/play');
     });
 
