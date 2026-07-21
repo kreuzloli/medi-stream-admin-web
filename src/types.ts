@@ -51,11 +51,18 @@ export interface UserInfo {
     userCode?: string | null;
     realName: string;
     nickname?: string | null;
+    mobile?: string | null;
+    headerId?: number | null;
     hospitalId?: number | null;
     deptId?: number | null;
     hospitalName?: string | null;
     deptName?: string | null;
     identityType?: string | null;
+    doctorCertNo?: string | null;
+    idCardNo?: string | null;
+    doctorCertFileId?: number | null;
+    idCardFrontFileId?: number | null;
+    idCardBackFileId?: number | null;
     status: number;
     createdAt?: string | null;
     updatedAt?: string | null;

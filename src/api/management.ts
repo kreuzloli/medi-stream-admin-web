@@ -3,6 +3,7 @@ import { logger } from '../common/logger';
 import { navigate } from '../router/routes';
 import type {
     Administrator,
+    FileObject,
     IdsResponse,
     PageResponse,
     Permission,
@@ -154,6 +155,10 @@ export const managementApi = {
     /** 查询用户详情，响应包含可直接展示的医院和科室名称。 */
     user(id: number): Promise<UserInfo> {
         return request(`/users/${id}`);
+    },
+    /** 读取用户头像或证件文件元数据，文件内容通过响应中的 fileUrl 展示。 */
+    file(id: number): Promise<FileObject> {
+        return request(`/files/${id}`);
     },
     /** 封禁或解封用户，不修改其业务资料和机构归属。 */
     setUserStatus(id: number, status: number): Promise<{ ok: boolean }> {
